@@ -1,4 +1,4 @@
-DIGITALIZADOR DE FOTOGRAFIAS A PDF | version 1.1
+DIGITALIZADOR DE FOTOGRAFIAS A PDF | version 1.2
 =================================================
 
 QUE HACE
@@ -9,8 +9,16 @@ resultado se parezca a un escaneo. El color del documento se conserva.
 No usa OCR y no transcribe letras ni dibujos a texto de computadora.
 Las fotografias originales nunca se modifican ni se borran.
 
-NOVEDADES DE LA VERSION 1.1
+NOVEDADES DE LA VERSION 1.2
 --------------------------
+- El orden del PDF sigue los metadatos EXIF DateTimeOriginal (hora de toma).
+- NO se usan nombres ni fechas de subida, descarga o modificacion de OneDrive.
+- Si falta la hora EXIF original en alguna foto, se informa y no se genera
+  un PDF con un orden que podria estar equivocado.
+- Se tienen en cuenta subsegundos y huso horario cuando estan presentes.
+
+FUNCIONES CONSERVADAS DESDE LA VERSION 1.1
+----------------------------------------
 - Mejor deteccion automatica de la hoja: bordes, luminosidad y color de fondo.
 - Paginas del PDF ajustadas al recorte, sin margenes blancos artificiales.
 - Campo para escribir el nombre del PDF antes de crearlo.
@@ -47,8 +55,12 @@ CONSEJOS PARA FOTOGRAFIAR RAPIDO
 - Procura que las cuatro esquinas de la hoja esten visibles y no cortadas.
 - Una mesa lisa y de color distinto al papel mejora mucho el recorte.
 - Evita sombras fuertes sobre los bordes y usa luz uniforme.
-- Toma las fotos en orden; los nombres se ordenan de forma natural:
-  foto1, foto2, foto10. Para varias sesiones, numera 001, 002, 003...
+- Toma las fotos en orden. La app las ordena usando su fecha y hora EXIF
+  original, aunque cambies los nombres o se descarguen desde OneDrive.
+- Descarga las fotografias originales sin quitar sus metadatos; una imagen
+  editada o convertida podria no conservar DateTimeOriginal.
+- Si dos fotos tienen exactamente la misma marca temporal EXIF, no hay forma
+  fiable de saber su orden con ese dato; comprueba esos casos.
 - Para documentos distintos, usa una carpeta de fotografias por documento.
 
 PRIVACIDAD Y CALIDAD
