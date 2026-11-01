@@ -517,6 +517,8 @@ def gui_main():
             manual = self.manual_corners.get(photo)
             # Procesamiento fuera del hilo de interfaz: el usuario puede navegar mientras carga.
             def work():
+                if token != self.preview_token:
+                    return  # No procesar miniaturas que ya no están seleccionadas.
                 try:
                     result = preview_pair(photo, crop, manual)
                     self.events.put(('preview', token, key, result, None))

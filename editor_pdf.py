@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import BytesIO
 import os
@@ -149,6 +150,7 @@ class PdfEditorWindow:
         self.window.minsize(850, 600)
         self.window.protocol('WM_DELETE_WINDOW', self.close)
         self.events = queue.Queue()
+        self.render_pool = ThreadPoolExecutor(max_workers=2)
         self.preview_cache: OrderedDict[PageItem, Image.Image] = OrderedDict()
         self.last_image = None
         self.preview_generation = 0
@@ -281,15 +283,17 @@ class PdfEditorWindow:
         self.preview.configure(text='Preparando vista previa...', image='')
         self.state.set('Cargando solo esta página; puedes seguir navegando.')
         def worker():
+            if gen != self.preview_generation:
+                return  # Saltar solicitudes obsoletas después de pasar varias páginas.
             try:
                 if item.image_path is not None:
-                    image = image_page_preview(item.image_path, 950, 950)
+                    image = image_page_preview(item.image_path, 740, 560)
                 else:
-                    image = pdf_page_preview(self.path, item.source_index, 950, 950)
+                    image = pdf_page_preview(self.path, item.source_index, 740, 560)
                 self.events.put(('render', gen, item, image, None))
             except Exception as exc:
                 self.events.put(('render', gen, item, None, str(exc)))
-        threading.Thread(target=worker, daemon=True).start()
+        self.render_pool.submit(worker)
 
     def _show(self, pil: Image.Image):
         from PIL import ImageTk
@@ -439,6 +443,7 @@ class PdfEditorWindow:
             if not messagebox.askyesno('Cerrar sin guardar', '¿Cerrar esta ventana? Los cambios no guardados se perderán.', parent=self.window):
                 return
         self.window.destroy()
+        self.render_pool.shutdown(wait=False, cancel_futures=True)
 
 
 def open_editor(parent):
