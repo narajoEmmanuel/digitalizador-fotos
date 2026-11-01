@@ -7,6 +7,7 @@ El programa conserva el color y nunca modifica las fotografías originales.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta, timezone
 import os
 import queue
 import re
@@ -21,7 +22,7 @@ from recorte import detectar_hoja, ordenar_esquinas
 
 import cv2
 import numpy as np
-from PIL import Image, ImageCms, ImageOps, ImageTk
+from PIL import ExifTags, Image, ImageCms, ImageOps, ImageTk
 from reportlab.pdfgen import canvas
 
 try:
@@ -35,15 +36,81 @@ EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".tif", ".tiff
 MAX_SIDE = 3000  # Detalle de calidad para archivo, sin archivos innecesariamente gigantes.
 
 
-def natural_key(path: Path):
-    return [int(s) if s.isdigit() else s.casefold() for s in re.split(r"(\d+)", path.name)]
+def capture_datetime(photo: Path) -> datetime:
+    """Obtiene la fecha ORIGINAL de toma (EXIF DateTimeOriginal), no la del archivo.
+
+    No se usan nombres, fechas de descarga ni modificaciones de OneDrive.
+    El offset horario y fracciones de segundo se conservan cuando existen.
+    """
+    try:
+        with Image.open(photo) as image:
+            exif = image.getexif()
+            camera_ifd = exif.get_ifd(ExifTags.IFD.Exif)
+            raw = camera_ifd.get(36867) or exif.get(36867)  # DateTimeOriginal
+            subsec = camera_ifd.get(37521) or exif.get(37521)  # SubSecTimeOriginal
+            offset = camera_ifd.get(36881) or exif.get(36881)  # OffsetTimeOriginal
+    except Exception as exc:
+        raise ValueError(f"{photo.name}: no se pudieron leer sus metadatos de captura ({exc}).") from exc
+
+    if isinstance(raw, bytes):
+        raw = raw.decode("ascii", errors="replace")
+    if not isinstance(raw, str):
+        raise ValueError(
+            f"{photo.name}: falta EXIF DateTimeOriginal. Exporta la foto original "
+            "desde el iPhone/OneDrive sin eliminar metadatos; no se usará la fecha de subida."
+        )
+    try:
+        result = datetime.strptime(raw.strip().strip("\x00"), "%Y:%m:%d %H:%M:%S")
+    except ValueError as exc:
+        raise ValueError(f"{photo.name}: hora EXIF DateTimeOriginal no válida: {raw!r}.") from exc
+
+    if isinstance(subsec, bytes):
+        subsec = subsec.decode("ascii", errors="replace")
+    if subsec is not None:
+        digits = str(subsec).strip().strip("\x00")
+        if digits.isdigit():
+            result = result.replace(microsecond=int((digits + "000000")[:6]))
+
+    if isinstance(offset, bytes):
+        offset = offset.decode("ascii", errors="replace")
+    if isinstance(offset, str):
+        match = re.fullmatch(r"([+-])(\d{2}):(\d{2})", offset.strip().strip("\x00"))
+        if match:
+            hours, minutes = int(match[2]), int(match[3])
+            if hours <= 23 and minutes <= 59:
+                delta = timedelta(hours=hours, minutes=minutes)
+                result = result.replace(tzinfo=timezone(delta if match[1] == "+" else -delta))
+    return result
+
+
+def capture_order(paths: list[Path]) -> list[Path]:
+    """Orden estricto por captura; si faltan metadatos, no adivina el orden."""
+    dates = []
+    failures = []
+    for photo in paths:
+        try:
+            dates.append((photo, capture_datetime(photo)))
+        except ValueError as exc:
+            failures.append(str(exc))
+    if failures:
+        sample = "\n".join(f"- {message}" for message in failures[:8])
+        remaining = f"\n... y {len(failures) - 8} más." if len(failures) > 8 else ""
+        raise ValueError(
+            f"{len(failures)} foto(s) sin fecha original de captura válida. "
+            "No se creará el PDF con un orden supuesto.\n" + sample + remaining
+        )
+    # Si TODAS las fotos tienen zona horaria, comparar instantes absolutos en UTC.
+    # Si algunas no la incluyen, comparar la hora local registrada por la cámara.
+    all_zoned = all(timestamp.tzinfo is not None for _, timestamp in dates)
+    dates.sort(key=lambda item: item[1].astimezone(timezone.utc)
+               if all_zoned else item[1].replace(tzinfo=None))
+    # Empates exactos conservan el orden de entrada: EXIF no permite distinguirlos.
+    return [path for path, _ in dates]
 
 
 def discover_images(folder: Path) -> list[Path]:
-    return sorted(
-        (p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in EXTENSIONS),
-        key=natural_key,
-    )
+    photos = [p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in EXTENSIONS]
+    return capture_order(photos)
 
 
 def open_color_image(path: Path) -> Image.Image:
@@ -120,6 +187,7 @@ def create_pdf(
 ) -> dict:
     if not paths:
         raise ValueError("La carpeta no contiene fotografías compatibles.")
+    paths = capture_order(paths)  # Garantiza el orden EXIF incluso desde la consola o la API.
     target.parent.mkdir(parents=True, exist_ok=True)
     warnings: list[str] = []
     errors: list[str] = []
@@ -166,7 +234,10 @@ def cli_main(arguments: argparse.Namespace):
     folder = Path(arguments.carpeta).expanduser().resolve()
     if not folder.is_dir():
         raise SystemExit(f"No existe la carpeta: {folder}")
-    paths = discover_images(folder)
+    try:
+        paths = discover_images(folder)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     destination = Path(arguments.salida).expanduser().resolve()
     print(f"Imágenes encontradas: {len(paths)}")
     result = create_pdf(paths, destination, auto_crop=not arguments.sin_recorte,
@@ -246,7 +317,7 @@ def gui_main():
             right = ttk.Frame(panes)
             panes.add(left, weight=1)
             panes.add(right, weight=4)
-            ttk.Label(left, text="Páginas (en orden)", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 6))
+            ttk.Label(left, text="Páginas (orden de captura)", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 6))
             listcontainer = ttk.Frame(left)
             listcontainer.pack(fill="both", expand=True)
             self.listbox = tk.Listbox(listcontainer, activestyle="none", exportselection=False,
@@ -278,16 +349,26 @@ def gui_main():
             folder = filedialog.askdirectory(title="Selecciona la carpeta con fotografías")
             if not folder:
                 return
-            self.folder = Path(folder)
-            self.paths = discover_images(self.folder)
+            chosen_folder = Path(folder)
+            try:
+                chosen_paths = discover_images(chosen_folder)
+            except ValueError as exc:
+                messagebox.showerror("Metadatos de captura", str(exc))
+                return
+            self.folder = chosen_folder
+            self.paths = chosen_paths
             self.manual_corners = {}
             if not self.pdf_name.get().strip() or self.pdf_name.get().strip() == self.previous_folder_name:
                 self.pdf_name.set(self.folder.name)
             self.previous_folder_name = self.folder.name
             self.listbox.delete(0, "end")
             for photo in self.paths:
-                self.listbox.insert("end", photo.name)
-            self.info.set(f"{len(self.paths)} fotografías en {self.folder}")
+                captured = capture_datetime(photo)
+                self.listbox.insert("end", f"{captured:%d/%m %H:%M:%S}  {photo.name}")
+            self.info.set(
+                f"{len(self.paths)} fotografías ordenadas por fecha/hora original de captura (EXIF). "
+                "No por nombre, descarga o subida a OneDrive."
+            )
             self.make_button.state(["!disabled"] if self.paths else ["disabled"])
             self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
             if self.paths:
