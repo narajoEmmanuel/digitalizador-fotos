@@ -68,6 +68,42 @@ def _quad_from_contour(contour: np.ndarray) -> list[tuple[np.ndarray, bool]]:
     return result
 
 
+def _contraste_exterior(quad: np.ndarray, lab: np.ndarray) -> tuple[float, int]:
+    """Comprueba que cada lado separa papel de fondo real, no del marco de foto.
+
+    Se comparan muestras a ambos lados de la arista en vez de premiar solo el
+    área del rectángulo. Esto reduce falsos positivos con fondos estampados.
+    """
+    height, width = lab.shape[:2]
+    center = quad.mean(axis=0)
+    offset = max(5., min(height, width) * .014)
+    strengths = []
+    sides_with_background = 0
+    for p1, p2 in zip(quad, np.roll(quad, -1, axis=0)):
+        t = np.linspace(.15, .85, 29, dtype=np.float32)[:, None]
+        positions = p1[None, :] * (1. - t) + p2[None, :] * t
+        inward = center - positions.mean(axis=0)
+        norm = float(np.linalg.norm(inward))
+        if norm < 1:
+            strengths.append(0.)
+            continue
+        inward = inward / norm * offset
+        inside, outside = positions + inward, positions - inward
+        valid = ((outside[:, 0] >= 2) & (outside[:, 0] < width-2)
+                 & (outside[:, 1] >= 2) & (outside[:, 1] < height-2)
+                 & (inside[:, 0] >= 1) & (inside[:, 0] < width-1)
+                 & (inside[:, 1] >= 1) & (inside[:, 1] < height-1))
+        if np.count_nonzero(valid) < 20:
+            strengths.append(0.)
+            continue
+        sides_with_background += 1
+        a = np.rint(inside[valid]).astype(int)
+        b = np.rint(outside[valid]).astype(int)
+        distances = np.linalg.norm(lab[a[:, 1], a[:, 0]] - lab[b[:, 1], b[:, 0]], axis=1)
+        strengths.append(float(np.median(distances)))
+    return float(np.median(strengths)), sides_with_background
+
+
 def detectar_hoja(rgb: np.ndarray) -> np.ndarray | None:
     """Localiza cuatro esquinas sin necesidad de papel blanco o fondo negro."""
     h, w = rgb.shape[:2]
@@ -146,10 +182,15 @@ def detectar_hoja(rgb: np.ndarray) -> np.ndarray | None:
                 edge_quality = float(np.clip(np.median(supports) / gradient_scale, 0, 1))
                 center = quad.mean(axis=0)
                 off_center = np.linalg.norm((center-(sw/2, sh/2)) / (sw, sh))
-                # Preferir página grande, centrada y con límites visibles.
-                score = (fraction * 1.45 + edge_quality * .24
-                         - off_center * .14 + (.025 if method == "bordes" else 0)
-                         - (.08 if is_box_fallback else 0))
+                # La hoja debe separar físicamente el papel del fondo, con
+                # evidencia en al menos tres lados. El marco de la fotografía
+                # carece de píxeles exteriores y ya no puede ganar por ser grande.
+                contrast, observed_sides = _contraste_exterior(quad, lab)
+                if observed_sides < 3 or contrast < 7.5:
+                    continue
+                color_quality = min(1.0, contrast / 35.)
+                score = (fraction * .32 + edge_quality * .20 + color_quality * 1.5
+                         - off_center * .16 - (.06 if is_box_fallback else 0))
                 candidates.append((score, quad, method))
     if not candidates:
         return None
