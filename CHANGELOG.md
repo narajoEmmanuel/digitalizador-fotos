@@ -1,5 +1,13 @@
 # Historial de cambios
 
+## 1.2 (2026-11-01)
+
+- Orden de páginas basado en `EXIF DateTimeOriginal` de las fotos, independiente del nombre y las fechas de OneDrive o Windows.
+- Soporte de subsegundos y offset horario EXIF cuando estén disponibles.
+- La aplicación se detiene y señala las fotos sin fecha de captura para evitar un orden inventado.
+- La interfaz muestra la fecha y hora de toma de cada página.
+- Nuevas pruebas automáticas de orden cronológico y metadatos ausentes.
+
 ## 1.1 (2026-11-01)
 
 - Recorte mejorado mediante detección de bordes, luminosidad y color del fondo.
