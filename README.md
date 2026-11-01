@@ -54,6 +54,14 @@ Las páginas que no cambias **se copian directamente del PDF**, sin recomprimir 
 
 Formatos de entrada: JPG, JPEG, PNG, HEIC, HEIF, WebP, TIFF y BMP.
 
+## Recorte automático y ajuste manual (v1.4)
+
+- El detector compara el color **dentro y fuera de cada lado** de la hoja. Esto reduce la selección errónea de los límites de la fotografía, especialmente con fondos oscuros, coloreados o estampados.
+- En **Ajustar esquinas de esta hoja**, la fotografía se adapta automáticamente al espacio disponible en el monitor. Se ven siempre los cuatro puntos y el botón **Guardar recorte**, sin desplazar la ventana ni moverla fuera de la pantalla.
+- El editor añade un pequeño margen oscuro alrededor de la imagen para que se puedan arrastrar las esquinas incluso cuando estén pegadas al límite de la fotografía.
+- Si no existe evidencia suficiente para un recorte seguro, se conserva la fotografía completa y se avisa. Conviene comprobar esas páginas antes de eliminar los originales.
+- El ajuste de esquinas utiliza una miniatura para responder rápido. El PDF se procesa después con la fotografía original en alta resolución.
+
 ## Consejos para mejores recortes
 
 - Fotografía las hojas **sobre una superficie de color diferente al papel**.
