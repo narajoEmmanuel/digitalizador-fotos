@@ -1,0 +1,32 @@
+# Entorno virtual e instalaciones locales
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Archivos generados y documentos privados
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.heif
+*.webp
+*.tif
+*.tiff
+*.bmp
+fotos/
+documentos/
+salidas/
+pruebas_locales/
+
+# Entornos y archivos temporales
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+Thumbs.db
+.DS_Store
