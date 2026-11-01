@@ -554,10 +554,15 @@ def gui_main():
             self.crop_loading = True
             self.manual_button.state(["disabled"])
             self.preview_status.set(f"Abriendo ajuste de esquinas de {photo.name}...")
+            # Leer dimensiones de Tk solo desde el hilo gráfico.
+            screen_w = self.root.winfo_screenwidth()
+            screen_h = self.root.winfo_screenheight()
+            limit = max(280, min(840, screen_w - 150, screen_h - 245))
 
             def worker():
                 try:
-                    preview, size = preview_image(photo, 840)
+                    # La lectura y el redimensionado de HEIC ocurren fuera de Tk.
+                    preview, size = preview_image(photo, limit)
                     detection = find_document_corners(np.asarray(preview))
                     self.events.put(('crop_ready', photo, preview, size, detection, None))
                 except Exception as exc:
@@ -568,6 +573,14 @@ def gui_main():
         def show_crop_editor(self, photo, preview, full_size, detected_small):
             """La interfaz Tk y su imagen se construyen únicamente en el hilo principal."""
             w, h = full_size
+            screen_w = self.root.winfo_screenwidth()
+            screen_h = self.root.winfo_screenheight()
+            # Reserva espacio para encabezado, controles, barras de Windows
+            # y los cuatro tiradores, incluso con escalado de pantalla.
+            max_width = max(240, screen_w - 150)
+            max_height = max(240, screen_h - 245)
+            if preview.width > max_width or preview.height > max_height:
+                preview.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
             width, height = preview.size
             ratio_x, ratio_y = width / w, height / h
             img = ImageTk.PhotoImage(preview)
@@ -589,10 +602,12 @@ def gui_main():
             container.pack(fill="both", expand=True)
             ttk.Label(container, text="Arrastra los cuatro círculos a las esquinas de la hoja.",
                       font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
-            board = tk.Canvas(container, width=width, height=height, highlightthickness=0,
+            padding = 14  # los tiradores no quedan cortados en bordes de foto
+            board = tk.Canvas(container, width=width + 2*padding,
+                              height=height + 2*padding, highlightthickness=0,
                               borderwidth=0, cursor="crosshair", bg="#1B242C")
             board.pack()
-            board.create_image(0, 0, image=img, anchor="nw")
+            board.create_image(padding, padding, image=img, anchor="nw")
             board.image_reference = img
             poly = board.create_polygon(0, 0, 0, 0, outline="#16A6DB", fill="", width=3)
             handles = [board.create_oval(0, 0, 0, 0, fill="#16A6DB", outline="white", width=2)
@@ -602,13 +617,14 @@ def gui_main():
             selected_handle = [None]
 
             def redraw():
-                board.coords(poly, *[value for xy in points for value in xy])
+                board.coords(poly, *[value + padding for xy in points for value in xy])
                 for i, (x, y) in enumerate(points):
-                    board.coords(handles[i], x-11, y-11, x+11, y+11)
-                    board.coords(labels[i], x, y)
+                    board.coords(handles[i], x+padding-11, y+padding-11,
+                                 x+padding+11, y+padding+11)
+                    board.coords(labels[i], x+padding, y+padding)
 
             def near_handle(event):
-                distances = [np.hypot(x-event.x, y-event.y) for x, y in points]
+                distances = [np.hypot(x+padding-event.x, y+padding-event.y) for x, y in points]
                 closest = int(np.argmin(distances))
                 return closest if distances[closest] < 38 else None
 
@@ -618,7 +634,8 @@ def gui_main():
             def drag(event):
                 i = selected_handle[0]
                 if i is not None:
-                    points[i] = [max(0, min(width-1, event.x)), max(0, min(height-1, event.y))]
+                    points[i] = [max(0, min(width-1, event.x-padding)),
+                                 max(0, min(height-1, event.y-padding))]
                     redraw()
 
             board.bind("<ButtonPress-1>", press)
@@ -649,6 +666,13 @@ def gui_main():
             ttk.Button(controls, text="Volver a detección automática", command=reset).pack(side="left")
             ttk.Button(controls, text="Cancelar", command=popup.destroy).pack(side="right", padx=(7, 0))
             ttk.Button(controls, text="Guardar recorte", command=save).pack(side="right")
+            popup.update_idletasks()
+            popup_w = min(popup.winfo_reqwidth(), screen_w - 30)
+            popup_h = min(popup.winfo_reqheight(), screen_h - 85)
+            x = max(0, (screen_w - popup_w)//2)
+            y = max(0, (screen_h - popup_h)//2 - 20)
+            popup.geometry(f"{popup_w}x{popup_h}+{x}+{y}")
+            popup.resizable(False, False)
 
         @staticmethod
         def clean_name(value: str) -> str:
