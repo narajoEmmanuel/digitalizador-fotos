@@ -75,6 +75,40 @@ class DigitalizadorTests(unittest.TestCase):
         self.assertGreater(np.ptp(quad[:, 0]), 350)
         self.assertGreater(np.ptp(quad[:, 1]), 500)
 
+    def test_fondo_estampado_papel_perforado_no_selecciona_el_marco(self):
+        # Simula un fondo de color con patrones, renglones y perforaciones.
+        import cv2
+        h, w = 850, 630
+        yy, xx = np.indices((h, w))
+        photo = np.empty((h, w, 3), dtype=np.uint8)
+        photo[:, :, 0] = 68 + (18 * np.sin(xx / 25)).astype(np.int16)
+        photo[:, :, 1] = 92 + (16 * np.cos(yy / 29)).astype(np.int16)
+        photo[:, :, 2] = 103 + (18 * np.sin((xx + yy) / 17)).astype(np.int16)
+        page = np.full((600, 405, 3), (238, 237, 230), dtype=np.uint8)
+        for row in range(80, 590, 30):
+            cv2.line(page, (0, row), (405, row), (166, 189, 173), 1)
+        for row in range(22, 590, 48):
+            cv2.circle(page, (392, row), 9, (84, 85, 88), -1)
+        expected = np.float32([[101, 112], [493, 94], [528, 735], [84, 746]])
+        original_corners = np.float32([[0, 0], [404, 0], [404, 599], [0, 599]])
+        transform = cv2.getPerspectiveTransform(original_corners, expected)
+        overlay = cv2.warpPerspective(page, transform, (w, h))
+        mask = cv2.warpPerspective(np.full(page.shape[:2], 255, np.uint8),
+                                   transform, (w, h))
+        photo[mask > 80] = overlay[mask > 80]
+        detected = detectar_hoja(photo)
+        self.assertIsNotNone(detected)
+        np.testing.assert_allclose(detected, expected, atol=18)
+        self.assertGreater(np.min(detected[:, 0]), 60)
+        self.assertLess(np.max(detected[:, 0]), w - 60)
+
+    def test_marco_fotografico_no_es_una_hoja(self):
+        # Con solo el límite de la imagen, se conserva la foto sin cortar.
+        photo = np.full((700, 500, 3), (190, 180, 170), dtype=np.uint8)
+        import cv2
+        cv2.rectangle(photo, (1, 1), (498, 698), (10, 20, 30), 3)
+        self.assertIsNone(detectar_hoja(photo))
+
     def test_pagina_se_recorta_y_preserva_color(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / 'foto1.png'
