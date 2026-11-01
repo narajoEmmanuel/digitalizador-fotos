@@ -19,11 +19,11 @@ if not exist ".venv\Scripts\python.exe" (
     %PY% -m venv .venv
     if errorlevel 1 goto error
 )
-if not exist ".venv\instalado.ok" (
+if not exist ".venv\instalado_v13.ok" (
     echo Instalando componentes necesarios. Solo ocurre la primera vez...
     ".venv\Scripts\python.exe" -m pip install -r requirements.txt
     if errorlevel 1 goto error
-    echo ok>".venv\instalado.ok"
+    echo ok>".venv\instalado_v13.ok"
 )
 ".venv\Scripts\python.exe" digitalizador.py
 if errorlevel 1 goto error

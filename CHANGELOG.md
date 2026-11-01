@@ -1,5 +1,16 @@
 # Historial de cambios
 
+## 1.3 (2026-11-01)
+
+- Editor de PDF existente: sustituir página, insertar antes/después y deshacer, sin necesitar fotos antiguas.
+- Copia nueva de seguridad obligatoria: no se sobrescribe el PDF de origen.
+- Contador y navegación rápida de páginas, campo «Ir a», teclas Alt+flechas y AvPág/RePág.
+- Páginas ya digitalizadas se copian sin volver a convertirlas en JPG.
+- Vistas previas de fotos ligeras, asíncronas y con caché; el recorte manual usa miniaturas.
+- Aumentada la resolución máxima de exportación a 6000 píxeles y JPEG de calidad 97, sin OCR.
+- Exportación inicial ahora aborta ante páginas fallidas en lugar de producir un archivo incompleto.
+- 11 pruebas automatizadas para orden, recorte, protección de originales e inserción/reemplazo.
+
 ## 1.2 (2026-11-01)
 
 - Orden de páginas basado en `EXIF DateTimeOriginal` de las fotos, independiente del nombre y las fechas de OneDrive o Windows.

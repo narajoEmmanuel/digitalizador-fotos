@@ -84,3 +84,16 @@ SI YA TENIAS LA VERSION ANTERIOR
 --------------------------------
 Puedes descomprimir esta version en otra carpeta y abrir su INICIAR.bat.
 Las fotos y los PDFs creados anteriormente no se modifican.
+
+
+NUEVO EN VERSION 1.3
+--------------------
+Para corregir un PDF aunque ya no existan las fotos de origen:
+  1) Haz clic en "Abrir PDF existente y corregir paginas".
+  2) Ve a la pagina que quieres revisar ("Pagina X de Y").
+  3) Usa "Reemplazar pagina con foto", "Insertar antes" o "Insertar despues".
+  4) Guarda como PDF revisado, nunca se altera el PDF antiguo.
+
+Puedes revisar fotos mas rapido con Anterior y Siguiente y usar el editor
+para navegar por PDF sin tener que conservar todas las fotografias.
+Conserva una segunda copia de seguridad antes de borrar los originales.

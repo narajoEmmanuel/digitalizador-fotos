@@ -7,6 +7,8 @@ El programa conserva el color y nunca modifica las fotografías originales.
 from __future__ import annotations
 
 import argparse
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 import os
 import queue
@@ -33,7 +35,7 @@ except ImportError:
     HEIC_AVAILABLE = False
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".tif", ".tiff", ".bmp"}
-MAX_SIDE = 3000  # Detalle de calidad para archivo, sin archivos innecesariamente gigantes.
+MAX_SIDE = 6000  # Guardar detalle para archivo a largo plazo (no disminuir fotos normales del iPhone).
 
 
 def capture_datetime(photo: Path) -> datetime:
@@ -135,6 +137,56 @@ def open_color_image(path: Path) -> Image.Image:
         return corrected.copy()
 
 
+
+def preview_image(photo: Path, max_side: int = 1150) -> tuple[Image.Image, tuple[int, int]]:
+    """Lee una miniatura para vista previa y editor de esquinas, sin procesar 12/48 MP.
+
+    Retorna imagen RGB y dimensiones originales corregidas por orientación EXIF.
+    """
+    with Image.open(photo) as src:
+        width, height = src.size
+        orientation = src.getexif().get(274, 1)
+        if orientation in (5, 6, 7, 8):
+            width, height = height, width
+        if photo.suffix.lower() in ('.jpg', '.jpeg'):
+            src.draft('RGB', (max_side * 2, max_side * 2))
+        src.thumbnail((max_side, max_side), Image.Resampling.BILINEAR)
+        frame = ImageOps.exif_transpose(src)
+        icc = frame.info.get('icc_profile')
+        if icc:
+            try:
+                from io import BytesIO
+                frame = ImageCms.profileToProfile(frame.convert('RGB'),
+                    ImageCms.ImageCmsProfile(BytesIO(icc)), ImageCms.createProfile('sRGB'), outputMode='RGB')
+            except Exception:
+                frame = frame.convert('RGB')
+        else:
+            frame = frame.convert('RGB')
+        return frame.copy(), (width, height)
+
+
+def preview_pair(photo: Path, auto_crop: bool, manual_corners: np.ndarray | None):
+    """Ambas vistas se calculan a baja resolución, solo para navegación fluida."""
+    original, (full_w, full_h) = preview_image(photo, 1050)
+    image = np.asarray(original)
+    cropped = False
+    processed = original.copy()
+    if auto_crop:
+        quad = (manual_corners * np.float32([image.shape[1] / full_w, image.shape[0] / full_h])
+                if manual_corners is not None else find_document_corners(image))
+        if quad is not None:
+            tl, tr, br, bl = ordenar_esquinas(quad)
+            w = int(max(np.linalg.norm(tr-tl), np.linalg.norm(br-bl)))
+            h = int(max(np.linalg.norm(bl-tl), np.linalg.norm(br-tr)))
+            if w >= 35 and h >= 35:
+                end = np.float32([[0, 0], [w-1, 0], [w-1, h-1], [0, h-1]])
+                warped = cv2.warpPerspective(image, cv2.getPerspectiveTransform(
+                    quad.astype(np.float32), end), (w, h), flags=cv2.INTER_LINEAR)
+                processed = Image.fromarray(warped, 'RGB')
+                cropped = True
+    return original, processed, cropped
+
+
 def find_document_corners(rgb: np.ndarray) -> np.ndarray | None:
     """Encuentra la hoja usando bordes, contraste y color del fondo."""
     return detectar_hoja(rgb)
@@ -189,6 +241,8 @@ def create_pdf(
         raise ValueError("La carpeta no contiene fotografías compatibles.")
     paths = capture_order(paths)  # Garantiza el orden EXIF incluso desde la consola o la API.
     target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        raise FileExistsError(f"Ya existe {target}. Elige otro nombre para proteger tu PDF anterior.")
     warnings: list[str] = []
     errors: list[str] = []
     written = 0
@@ -209,7 +263,7 @@ def create_pdf(
                         manual_corners=(manual_corners or {}).get(path),
                     )
                     filename = Path(temp_dir) / f"pagina_{i:06d}.jpg"
-                    result.save(filename, "JPEG", quality=94, subsampling=0, optimize=True)
+                    result.save(filename, "JPEG", quality=97, subsampling=0, optimize=True)
                     result.close()
                     fit_on_page(filename, pdf)
                     written += 1
@@ -220,6 +274,8 @@ def create_pdf(
                 finally:
                     if progress:
                         progress(i, len(paths), path.name)
+            if errors:
+                raise RuntimeError(f"No se guardó el PDF: {len(errors)} páginas fallaron. " + "; ".join(errors[:5]))
             if written == 0:
                 raise RuntimeError("No se pudo procesar ninguna imagen. " + "; ".join(errors[:3]))
             pdf.save()
@@ -271,6 +327,11 @@ def gui_main():
             self.events: queue.Queue = queue.Queue()
             self.busy = False
             self.preview_photos: list[ImageTk.PhotoImage] = []
+            self.preview_cache: OrderedDict = OrderedDict()
+            self.preview_token = 0
+            self.preview_after = None
+            self.preview_pool = ThreadPoolExecutor(max_workers=2)
+            self.page_position = tk.StringVar(value='Página 0 de 0')
 
             style = ttk.Style(root)
             if "clam" in style.theme_names():
@@ -291,6 +352,8 @@ def gui_main():
             actions.pack(fill="x")
             self.folder_button = ttk.Button(actions, text="1. Elegir carpeta de fotos", style="Main.TButton", command=self.pick_folder)
             self.folder_button.pack(side="left")
+            ttk.Button(actions, text="Abrir PDF existente y corregir páginas",
+                       command=self.edit_existing_pdf).pack(side="left", padx=(12, 0))
             self.make_button = ttk.Button(actions, text="3. Crear PDF", style="Main.TButton", command=self.make_pdf)
             self.make_button.pack(side="right")
             self.make_button.state(["disabled"])
@@ -327,6 +390,14 @@ def gui_main():
             self.listbox.pack(side="left", fill="both", expand=True)
             scroll.pack(side="right", fill="y")
             self.listbox.bind("<<ListboxSelect>>", lambda _event: self.refresh_preview())
+            nav = ttk.Frame(left)
+            nav.pack(fill="x", pady=(8, 0))
+            ttk.Button(nav, text="◀ Anterior", command=lambda: self.next_photo(-1)).pack(side="left")
+            ttk.Button(nav, text="Siguiente ▶", command=lambda: self.next_photo(1)).pack(side="right")
+            ttk.Label(left, textvariable=self.page_position,
+                      font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(8, 0))
+            self.listbox.bind('<Prior>', lambda _e: self.next_photo(-1))
+            self.listbox.bind('<Next>', lambda _e: self.next_photo(1))
 
             ttk.Label(right, text="Vista previa", font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=(16, 0), pady=(0, 6))
             previews = ttk.Frame(right)
@@ -358,6 +429,7 @@ def gui_main():
             self.folder = chosen_folder
             self.paths = chosen_paths
             self.manual_corners = {}
+            self.preview_cache.clear()
             if not self.pdf_name.get().strip() or self.pdf_name.get().strip() == self.previous_folder_name:
                 self.pdf_name.set(self.folder.name)
             self.previous_folder_name = self.folder.name
@@ -379,19 +451,43 @@ def gui_main():
                 self.set_preview(self.preview_result, None, "Procesado")
                 messagebox.showinfo("No hay fotografías", "Esta carpeta no contiene fotos JPG, PNG o HEIC compatibles.")
 
+        def edit_existing_pdf(self):
+            from editor_pdf import open_editor
+            open_editor(self.root)
+
+        def next_photo(self, step):
+            if not self.paths:
+                return
+            current = self.listbox.curselection()
+            index = max(0, min(len(self.paths)-1, (current[0] if current else 0) + step))
+            self.listbox.selection_clear(0, 'end')
+            self.listbox.selection_set(index)
+            self.listbox.activate(index)
+            self.listbox.see(index)
+            self.refresh_preview()
+
         def thumb(self, image: Image.Image) -> ImageTk.PhotoImage:
-            # El aspecto se mantiene, sin modificar el archivo de origen.
-            copy = image.copy()
-            copy.thumbnail((340, 410), Image.Resampling.LANCZOS)
-            return ImageTk.PhotoImage(copy)
+            image = image.copy()
+            image.thumbnail((340, 410), Image.Resampling.BILINEAR)
+            return ImageTk.PhotoImage(image)
 
         def set_preview(self, widget: tk.Label, image: Image.Image | None, title: str):
             if image is None:
-                widget.configure(image="", text=title)
+                widget.configure(image='', text=title)
                 return
             ph = self.thumb(image)
             self.preview_photos.append(ph)
             widget.configure(image=ph, text=title, padx=5, pady=5)
+
+        def _show_preview(self, photo, originals, processed, cropped):
+            self.preview_photos.clear()
+            self.set_preview(self.preview_orig, originals, 'Original')
+            self.set_preview(self.preview_result, processed, 'Resultado PDF')
+            self.preview_status.set(
+                'Recorte manual aplicado.' if cropped and photo in self.manual_corners
+                else 'Hoja detectada y enderezada.' if cropped
+                else 'No se detectó la hoja. Ajusta sus esquinas manualmente.'
+                if self.auto_crop.get() else 'Sin recorte: imagen completa.')
 
         def refresh_preview(self):
             if self.busy or not self.paths:
@@ -399,25 +495,34 @@ def gui_main():
             selected = self.listbox.curselection()
             if not selected:
                 return
-            photo = self.paths[selected[0]]
-            self.preview_photos.clear()
-            try:
-                original = open_color_image(photo)
-                processed, cropped = prepare_page(photo, self.auto_crop.get(), self.manual_corners.get(photo))
-                self.set_preview(self.preview_orig, original, "Original")
-                self.set_preview(self.preview_result, processed, "Resultado PDF")
-                original.close()
-                processed.close()
-                self.preview_status.set(
-                    "Recorte ajustado manualmente." if cropped and self.auto_crop.get() and photo in self.manual_corners
-                    else "Hoja detectada y enderezada." if cropped
-                    else "No se detectó la hoja. Puedes ajustar sus esquinas manualmente."
-                    if self.auto_crop.get() else "Sin recorte: imagen original completa."
-                )
-            except Exception as exc:
-                self.set_preview(self.preview_orig, None, "Original")
-                self.set_preview(self.preview_result, None, "Resultado")
-                self.preview_status.set(f"No se pudo mostrar esta imagen: {exc}")
+            index = selected[0]
+            photo = self.paths[index]
+            self.page_position.set(f'Página {index+1} de {len(self.paths)}')
+            self.preview_token += 1
+            token = self.preview_token
+            if self.preview_after is not None:
+                self.root.after_cancel(self.preview_after)
+            key = (photo, self.auto_crop.get(), tuple(self.manual_corners[photo].ravel())
+                   if photo in self.manual_corners else None)
+            if key in self.preview_cache:
+                self.preview_cache.move_to_end(key)
+                orig, result, cropped = self.preview_cache[key]
+                self._show_preview(photo, orig, result, cropped)
+                return
+            self.preview_status.set(f'Preparando vista rápida de {photo.name}...')
+            self.preview_after = self.root.after(65, lambda: self._submit_preview(token, key))
+
+        def _submit_preview(self, token, key):
+            photo, crop, _ = key
+            manual = self.manual_corners.get(photo)
+            # Procesamiento fuera del hilo de interfaz: el usuario puede navegar mientras carga.
+            def work():
+                try:
+                    result = preview_pair(photo, crop, manual)
+                    self.events.put(('preview', token, key, result, None))
+                except Exception as exc:
+                    self.events.put(('preview', token, key, None, str(exc)))
+            self.preview_pool.submit(work)
 
         def adjust_corners(self):
             """Editor opcional para las fotos difíciles, con cuatro puntos arrastrables."""
@@ -428,18 +533,16 @@ def gui_main():
                 return
             photo = self.paths[selected[0]]
             try:
-                original = open_color_image(photo)
+                preview, (w, h) = preview_image(photo, 1100)
             except Exception as exc:
                 messagebox.showerror("No se puede abrir", str(exc))
                 return
-            w, h = original.size
-            ratio = min(760 / w, 575 / h)
-            width, height = round(w * ratio), round(h * ratio)
-            preview = original.resize((width, height), Image.Resampling.LANCZOS)
+            width, height = preview.size
+            ratio_x, ratio_y = width / w, height / h
             img = ImageTk.PhotoImage(preview)
-            original_np = np.asarray(original)
-            detected = find_document_corners(original_np)
-            original.close()
+            detected_small = find_document_corners(np.asarray(preview))
+            detected = (detected_small / np.float32([ratio_x, ratio_y])
+                        if detected_small is not None else None)
             preview.close()
             initial = self.manual_corners.get(photo)
             if initial is None:
@@ -447,7 +550,7 @@ def gui_main():
             if initial is None:
                 initial = np.float32([[w*.05, h*.05], [w*.95, h*.05],
                                      [w*.95, h*.95], [w*.05, h*.95]])
-            points = (ordenar_esquinas(initial) * ratio).tolist()
+            points = (ordenar_esquinas(initial) * np.float32([ratio_x, ratio_y])).tolist()
             popup = tk.Toplevel(self.root)
             popup.title(f"Ajustar recorte: {photo.name}")
             popup.transient(self.root)
@@ -495,11 +598,11 @@ def gui_main():
             def reset():
                 quad = detected if detected is not None else np.float32([
                     [w*.05, h*.05], [w*.95, h*.05], [w*.95, h*.95], [w*.05, h*.95]])
-                points[:] = (ordenar_esquinas(quad) * ratio).tolist()
+                points[:] = (ordenar_esquinas(quad) * np.float32([ratio_x, ratio_y])).tolist()
                 redraw()
 
             def save():
-                quad = np.asarray(points, dtype=np.float32) / ratio
+                quad = np.asarray(points, dtype=np.float32) / np.float32([ratio_x, ratio_y])
                 # Comprobar que no se cruzan las aristas ni se recorta una zona diminuta.
                 shape = quad.reshape(-1, 1, 2)
                 if not cv2.isContourConvex(shape) or cv2.contourArea(shape) < .07*w*h:
@@ -573,7 +676,18 @@ def gui_main():
                     event = self.events.get_nowait()
                 except queue.Empty:
                     break
-                if event[0] == "progress":
+                if event[0] == 'preview':
+                    _, token, key, result, failure = event
+                    if result is not None:
+                        self.preview_cache[key] = result
+                        if len(self.preview_cache) > 18:
+                            self.preview_cache.popitem(last=False)
+                    if token == self.preview_token:
+                        if failure:
+                            self.preview_status.set(f'Vista previa no disponible: {failure}')
+                        elif result:
+                            self._show_preview(key[0], *result)
+                elif event[0] == "progress":
                     _, n, total, name = event
                     self.progress.configure(value=n)
                     self.progress_text.set(f"Procesando {n} de {total}: {name}")

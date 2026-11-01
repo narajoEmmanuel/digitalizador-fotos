@@ -4,6 +4,28 @@ Una aplicación local para **Windows** que convierte fotografías de documentos 
 
 ## Funciones
 
+### Corregir un PDF aunque ya eliminaste las fotografías originales
+
+1. Selecciona **Abrir PDF existente y corregir páginas**.
+2. El programa abre el PDF y muestra **Página X de Y**, número total de páginas y tamaño del PDF.
+3. Navega con **Anterior**, **Siguiente**, teclas **Alt + ← / →**, **RePág / AvPág**, o escribe un número en **Ir a**.
+4. Selecciona la página borrosa y usa **Reemplazar página con foto**; para una hoja faltante elige **Insertar antes** o **Insertar después**.
+5. Para revertir una modificación errónea utiliza **Deshacer**.
+6. **Guardar PDF revisado...** genera una copia nueva `_revisado.pdf` y verifica que contenga todas las páginas. Nunca sobrescribe el documento anterior.
+
+Las páginas que no cambias **se copian directamente del PDF**, sin recomprimir ni degradar los JPG que ya contiene. Las fotos nuevas se recortan automáticamente a color y se integran con calidad alta. **Las fotografías nuevas no necesitan EXIF** porque eliges explícitamente su posición.
+
+**Antes de eliminar las fotos o los originales en papel:** abre el PDF resultante y revisa todas las páginas a tamaño real en un lector PDF. Guarda también una segunda copia independiente (por ejemplo, en un disco externo), porque un único PDF sin respaldo no es un archivo seguro.
+
+### Vistas previas rápidas
+
+- La vista previa utiliza una copia pequeña en memoria, sin procesar cada foto de 12 o 48 megapíxeles mientras navegas.
+- El procesamiento de vista previa ocurre en segundo hilo y conserva las páginas visualizadas en caché.
+- Botones Anterior/Siguiente y numeración para recorrer muchas hojas rápidamente.
+- El recorte final se calcula **solo al crear el PDF**, con la foto de alta resolución.
+- El ajuste manual de esquinas usa miniatura para responder más rápido, sin limitar la calidad final del documento.
+
+
 - Orden automático por **fecha y hora original de captura** (`EXIF DateTimeOriginal`), no por nombre, descarga, modificación ni sincronización en OneDrive.
 - Detección y corrección de perspectiva de cada hoja.
 - Comparación entre foto original y página procesada.
@@ -72,16 +94,17 @@ python -m unittest discover -s tests -v
 - No se editan, sustituyen ni eliminan las fotos originales.
 - La detección depende del contraste, la iluminación y que el documento sea visible. Comprueba el resultado antes de archivar o descartar el papel.
 - Los ajustes manuales de las cuatro esquinas solo se mantienen en la sesión actual.
-- Los resultados se guardan como imágenes JPEG de alta calidad dentro del PDF, por lo que no son píxeles idénticos a la foto original. Se mantiene la apariencia a color, sin filtros de blanco y negro.
-- Si una fotografía no puede abrirse, se informa del error y se genera el PDF con las páginas válidas. Revisa el resumen al finalizar.
+- Las nuevas páginas se guardan como imágenes JPEG de alta calidad (hasta 6000 px por lado) dentro del PDF, por lo que no son píxeles idénticos a la foto original. Se mantiene la apariencia a color, sin filtros de blanco y negro.
+- Si una fotografía no puede abrirse, la creación se cancela para no guardar un PDF incompleto. La imagen original no se altera.
 
 ## Archivos principales
 
 - `digitalizador.py`: interfaz, importación de fotografías y generación del PDF.
 - `recorte.py`: detector de hojas y esquinas.
+- `editor_pdf.py`: editor y guardado conservador de PDFs existentes.
 - `INICIAR.bat`: inicio sencillo en Windows.
 - `requirements.txt`: dependencias.
 - `LEEME.txt`: instrucciones incluidas desde la versión 1.1.
 - `tests/`: pruebas automatizadas.
 
-**Versión**: 1.2, orden de captura EXIF, sin OCR ni cambios de color.
+**Versión**: 1.3, editor de PDF por página y vista previa optimizada, orden EXIF, sin OCR.
