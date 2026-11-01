@@ -4,7 +4,7 @@ Una aplicación local para **Windows** que convierte fotografías de documentos 
 
 ## Funciones
 
-- Selección de una carpeta de imágenes, en orden natural (`foto1`, `foto2`, `foto10`).
+- Orden automático por **fecha y hora original de captura** (`EXIF DateTimeOriginal`), no por nombre, descarga, modificación ni sincronización en OneDrive.
 - Detección y corrección de perspectiva de cada hoja.
 - Comparación entre foto original y página procesada.
 - Corrección manual opcional con cuatro esquinas ajustables.
@@ -22,7 +22,7 @@ Una aplicación local para **Windows** que convierte fotografías de documentos 
 
 1. Descarga el código ZIP del repositorio y descomprímelo.
 2. Abre `INICIAR.bat` con doble clic. Preparará un entorno `.venv` e instalará las dependencias.
-3. Selecciona una carpeta con fotografías de las hojas.
+3. Selecciona una carpeta con las fotos originales del iPhone, descargadas desde OneDrive sin eliminar sus metadatos.
 4. Escribe el nombre del documento PDF.
 5. Revisa algunas páginas. Corrige manualmente las esquinas si el recorte no es preciso.
 6. Pulsa **Crear PDF** y elige dónde guardarlo.
@@ -34,8 +34,17 @@ Formatos de entrada: JPG, JPEG, PNG, HEIC, HEIF, WebP, TIFF y BMP.
 - Fotografía las hojas **sobre una superficie de color diferente al papel**.
 - Mantén las cuatro esquinas completamente visibles.
 - Coloca el teléfono lo más perpendicular posible y evita sombras duras.
-- Usa una carpeta por documento, con fotos en el orden correcto.
+- Usa una carpeta por documento. El programa **reordena automáticamente las fotos por su hora original de captura**, incluso si sus nombres están desordenados.
 - Si el recorte automático no es seguro, la aplicación conservará **la foto completa**, para evitar pérdida de contenido.
+
+## Orden de páginas y OneDrive
+
+- El programa lee exclusivamente `EXIF DateTimeOriginal` para saber **cuándo se tomó** cada foto. Si existen, también utiliza los subsegundos (`SubSecTimeOriginal`) y el huso horario (`OffsetTimeOriginal`).
+- **No utiliza** el nombre del archivo ni las fechas de creación/modificación de Windows ni la fecha de subida o descarga de OneDrive para ordenar.
+- Con fotos tomadas en una misma zona horaria, las organiza cronológicamente. Si todas incluyen zona horaria, compara instantes absolutos; si algunas no la incluyen, compara la hora local registrada por cada cámara.
+- Si alguna foto no conserva su fecha EXIF original, **se detiene y muestra cuáles son**, en vez de inventar un orden. Conviene descargar el archivo original, no una captura de pantalla ni una conversión que borre metadatos.
+- Si dos imágenes tienen exactamente el mismo valor de captura EXIF, esos metadatos **no permiten saber cuál fue primero**. En ese caso se mantiene el orden de entrada, que puede depender de cómo Windows enumere los archivos.
+- La lista lateral muestra la fecha y hora de captura junto al nombre del archivo para verificar el resultado.
 
 ## Uso por consola (opcional)
 
@@ -75,4 +84,4 @@ python -m unittest discover -s tests -v
 - `LEEME.txt`: instrucciones incluidas desde la versión 1.1.
 - `tests/`: pruebas automatizadas.
 
-**Versión**: 1.1, basada en la versión funcional probada con fotografías de ejemplo. 
+**Versión**: 1.2, orden de captura EXIF, sin OCR ni cambios de color.
