@@ -1,5 +1,13 @@
 # Historial de cambios
 
+## 1.4 (2026-11-01)
+
+- Selección automática de hoja más fiable con fondos de color o estampados: contraste entre interior y exterior en cada lado del papel, sin preferir el marco de la imagen por su mayor tamaño.
+- Ajuste manual dimensionado a la pantalla disponible, con los cuatro tiradores y los botones visibles en pantallas pequeñas.
+- Margen visual alrededor de la fotografía para poder tomar los cuatro tiradores incluso junto al borde.
+- Pruebas adicionales con papel perforado sobre fondo estampado y con marco de fotografía sin hoja.
+- Se mantiene el procesamiento local, a color y sin OCR.
+
 ## 1.3 (2026-11-01)
 
 - Editor de PDF existente: sustituir página, insertar antes/después y deshacer, sin necesitar fotos antiguas.
