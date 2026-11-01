@@ -1,0 +1,74 @@
+DIGITALIZADOR DE FOTOGRAFIAS A PDF | version 1.1
+=================================================
+
+QUE HACE
+--------
+Transforma fotos de hojas en un PDF de varias paginas. Detecta la forma de
+la hoja, intenta eliminar el fondo y corrige su perspectiva para que el
+resultado se parezca a un escaneo. El color del documento se conserva.
+No usa OCR y no transcribe letras ni dibujos a texto de computadora.
+Las fotografias originales nunca se modifican ni se borran.
+
+NOVEDADES DE LA VERSION 1.1
+--------------------------
+- Mejor deteccion automatica de la hoja: bordes, luminosidad y color de fondo.
+- Paginas del PDF ajustadas al recorte, sin margenes blancos artificiales.
+- Campo para escribir el nombre del PDF antes de crearlo.
+- Boton opcional 'Ajustar esquinas de esta hoja' para fotos que el detector
+  automatico no recorte de forma correcta.
+
+COMO USARLO EN WINDOWS
+----------------------
+1. Descarga y descomprime este ZIP en una carpeta de la computadora.
+2. Si no tienes Python, instala Python 3.10 o superior desde python.org.
+3. Abre INICIAR.bat con doble clic. La primera ejecucion necesita Internet
+   para instalar las bibliotecas. Las siguientes funcionan sin Internet.
+4. Pulsa '1. Elegir carpeta de fotos', selecciona la carpeta con las fotos.
+   Admite JPG, PNG y HEIC del iPhone, entre otros formatos.
+5. En '2. Nombre del PDF' escribe el nombre que quieres, sin extension .pdf.
+6. Deja marcada 'Recortar y enderezar...' para quitar el fondo.
+   Revisa al menos las fotos mas dificiles en la vista previa.
+7. Pulsa '3. Crear PDF', selecciona la ubicacion y guarda el documento.
+
+CUANDO EL RECORTE AUTOMATICO NO ES BUENO
+--------------------------------------
+1. Selecciona la foto problematica en la lista de paginas.
+2. Pulsa 'Ajustar esquinas de esta hoja'.
+3. Arrastra los cuatro circulos hasta las cuatro esquinas reales del papel.
+4. Pulsa 'Guardar recorte'. Verifica la vista previa y crea el PDF.
+Los recortes manuales se guardan solo durante la sesion actual. Si cierras la
+aplicacion, tendras que ajustarlos de nuevo. Este editor es opcional.
+Si no se detecta la hoja, el programa conserva la foto completa en lugar
+ de descartar la pagina.
+
+CONSEJOS PARA FOTOGRAFIAR RAPIDO
+--------------------------------
+- Coloca el telefono fijo, apuntando directamente al papel.
+- Procura que las cuatro esquinas de la hoja esten visibles y no cortadas.
+- Una mesa lisa y de color distinto al papel mejora mucho el recorte.
+- Evita sombras fuertes sobre los bordes y usa luz uniforme.
+- Toma las fotos en orden; los nombres se ordenan de forma natural:
+  foto1, foto2, foto10. Para varias sesiones, numera 001, 002, 003...
+- Para documentos distintos, usa una carpeta de fotografias por documento.
+
+PRIVACIDAD Y CALIDAD
+-------------------
+- Las fotos se procesan localmente y no se envian a servidores.
+- Se mantienen en color, sin filtros de blanco y negro ni OCR.
+- El PDF ocupa el area de la hoja recortada, sin margenes agregados.
+- Las fotos se almacenan en el PDF en JPEG a alta calidad.
+- Si una hoja no puede detectarse, se conserva la foto completa, y la
+  aplicacion indica que pagina no pudo recortarse al finalizar.
+- La calidad depende de la iluminacion, el enfoque y la perspectiva.
+- Necesitas espacio temporal libre para procesar todas las fotografias.
+
+MODO AVANZADO, OPCIONAL
+----------------------
+.venv\Scripts\python.exe digitalizador.py --carpeta "C:\Fotos" --salida "C:\Documentos\mis_hojas.pdf"
+
+Para desactivar recorte automatico agrega: --sin-recorte
+
+SI YA TENIAS LA VERSION ANTERIOR
+--------------------------------
+Puedes descomprimir esta version en otra carpeta y abrir su INICIAR.bat.
+Las fotos y los PDFs creados anteriormente no se modifican.
