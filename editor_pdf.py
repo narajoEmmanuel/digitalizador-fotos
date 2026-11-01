@@ -151,7 +151,14 @@ class PdfEditorWindow:
         self.window.protocol('WM_DELETE_WINDOW', self.close)
         self.events = queue.Queue()
         self.render_pool = ThreadPoolExecutor(max_workers=2)
+        self.overview_pool = ThreadPoolExecutor(max_workers=1)
         self.preview_cache: OrderedDict[PageItem, Image.Image] = OrderedDict()
+        self.preview_pending: set[PageItem] = set()
+        self.overview_cache: OrderedDict[PageItem, Image.Image] = OrderedDict()
+        self.overview_window = None
+        self.overview_generation = 0
+        self.overview_buttons = {}
+        self.overview_photos = {}
         self.last_image = None
         self.preview_generation = 0
         self.render_after = None
@@ -208,6 +215,7 @@ class PdfEditorWindow:
         jump.pack(side='left')
         jump.bind('<Return>', self.go_to_page)
         ttk.Button(navigation, text='Ir', command=self.go_to_page).pack(side='left', padx=(5, 0))
+        ttk.Button(navigation, text='Ver 16 páginas', command=self.open_overview).pack(side='right')
 
         frame = tk.Frame(right, bg='#e3e6ea')
         frame.pack(fill='both', expand=True, padx=(12, 0))
@@ -279,21 +287,140 @@ class PdfEditorWindow:
         if cached is not None:
             self.preview_cache.move_to_end(item)
             self._show(cached)
+            self._prefetch_neighbors()
             return
         self.preview.configure(text='Preparando vista previa...', image='')
-        self.state.set('Cargando solo esta página; puedes seguir navegando.')
+        self.state.set('Cargando miniatura; puedes seguir navegando.')
+        self._submit_preview(item, gen)
+
+    def _submit_preview(self, item: PageItem, gen: int):
+        if item in self.preview_pending or item in self.preview_cache:
+            return
+        self.preview_pending.add(item)
+
         def worker():
-            if gen != self.preview_generation:
-                return  # Saltar solicitudes obsoletas después de pasar varias páginas.
             try:
                 if item.image_path is not None:
-                    image = image_page_preview(item.image_path, 740, 560)
+                    preview = image_page_preview(item.image_path, 740, 560)
                 else:
-                    image = pdf_page_preview(self.path, item.source_index, 740, 560)
-                self.events.put(('render', gen, item, image, None))
+                    preview = pdf_page_preview(self.path, item.source_index, 740, 560)
+                self.events.put(('render', gen, item, preview, None))
             except Exception as exc:
                 self.events.put(('render', gen, item, None, str(exc)))
+
         self.render_pool.submit(worker)
+
+    def _prefetch_neighbors(self):
+        """Carga las páginas de al lado después de mostrar la actual, sin retrasarla."""
+        current = self.current()
+        for index in (current + 1, current - 1):
+            if 0 <= index < len(self.pages):
+                self._submit_preview(self.pages[index], -1)
+
+    def open_overview(self):
+        """Vista de contacto de 16 páginas para revisar el PDF sin abrir una a una."""
+        from tkinter import ttk
+        tk = self.tk
+        if self.overview_window is not None and self.overview_window.winfo_exists():
+            self.overview_window.lift()
+            return
+        popup = tk.Toplevel(self.window)
+        popup.title('Vista general del PDF, 16 páginas a la vez')
+        popup.geometry('1000x790')
+        popup.minsize(730, 530)
+        self.overview_window = popup
+        self.overview_photos = {}
+        wrapper = ttk.Frame(popup, padding=12)
+        wrapper.pack(fill='both', expand=True)
+        control = ttk.Frame(wrapper)
+        control.pack(fill='x', pady=(0, 12))
+        self.overview_label = tk.StringVar()
+        ttk.Button(control, text='◀ 16 anteriores', command=lambda: self._overview_batch(self.overview_start - 16)).pack(side='left')
+        ttk.Label(control, textvariable=self.overview_label, font=('Segoe UI', 11, 'bold')).pack(side='left', padx=18)
+        ttk.Button(control, text='16 siguientes ▶', command=lambda: self._overview_batch(self.overview_start + 16)).pack(side='left')
+        ttk.Label(control, text='Selecciona una miniatura para ir a esa página.').pack(side='right')
+        self.overview_frame = ttk.Frame(wrapper)
+        self.overview_frame.pack(fill='both', expand=True)
+        self._overview_batch((self.current() // 16) * 16)
+        popup.protocol('WM_DELETE_WINDOW', self._close_overview)
+
+    def _close_overview(self):
+        self.overview_generation += 1
+        if self.overview_window is not None and self.overview_window.winfo_exists():
+            self.overview_window.destroy()
+        self.overview_window = None
+        self.overview_photos.clear()
+
+    def _overview_batch(self, start: int):
+        if self.overview_window is None or not self.overview_window.winfo_exists():
+            return
+        start = max(0, min(start, ((len(self.pages) - 1) // 16) * 16))
+        self.overview_start = start
+        self.overview_generation += 1
+        generation = self.overview_generation
+        batch = list(enumerate(self.pages[start:start + 16], start))
+        self.overview_label.set(f'Páginas {start + 1} a {start + len(batch)} de {len(self.pages)}')
+        for child in self.overview_frame.winfo_children():
+            child.destroy()
+        self.overview_buttons.clear()
+        self.overview_photos.clear()
+        to_render = []
+        for offset, (idx, item) in enumerate(batch):
+            r, c = divmod(offset, 4)
+            holder = self.ttk.Frame(self.overview_frame)
+            holder.grid(row=r, column=c, sticky='nsew', padx=5, pady=5)
+            btn = self.tk.Button(holder, bg='#e8edf1', relief='flat', cursor='hand2',
+                                 text=f'Cargando página {idx+1}...', compound='top',
+                                 command=lambda i=idx: self._overview_jump(i))
+            btn.pack(fill='both', expand=True)
+            self.ttk.Label(holder, text=f'Página {idx+1}', anchor='center').pack(fill='x')
+            self.overview_buttons[idx] = btn
+            cached = self.overview_cache.get(item)
+            if cached is not None:
+                self._overview_display(idx, item, cached)
+            else:
+                to_render.append((idx, item))
+        for c in range(4):
+            self.overview_frame.columnconfigure(c, weight=1)
+        for r in range(4):
+            self.overview_frame.rowconfigure(r, weight=1)
+        if not to_render:
+            return
+
+        def worker():
+            try:
+                with fitz.open(self.path) as source:
+                    for idx, item in to_render:
+                        if generation != self.overview_generation:
+                            return
+                        try:
+                            if item.image_path is not None:
+                                image = image_page_preview(item.image_path, 205, 155)
+                            else:
+                                page = source.load_page(item.source_index)
+                                zoom = min(205 / page.rect.width, 155 / page.rect.height, 1.0)
+                                pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False,
+                                                     colorspace=fitz.csRGB)
+                                image = Image.frombytes('RGB', (pix.width, pix.height), pix.samples)
+                            self.events.put(('overview_render', generation, idx, item, image, None))
+                        except Exception as exc:
+                            self.events.put(('overview_render', generation, idx, item, None, str(exc)))
+            except Exception as exc:
+                self.events.put(('overview_error', generation, str(exc)))
+        self.overview_pool.submit(worker)
+
+    def _overview_display(self, index: int, item: PageItem, image: Image.Image):
+        from PIL import ImageTk
+        button = self.overview_buttons.get(index)
+        if button is None:
+            return
+        photo = ImageTk.PhotoImage(image)
+        self.overview_photos[index] = photo
+        button.configure(image=photo, text='', width=210, height=162)
+
+    def _overview_jump(self, index: int):
+        self.set_active(index)
+        self._close_overview()
 
     def _show(self, pil: Image.Image):
         from PIL import ImageTk
@@ -403,15 +530,34 @@ class PdfEditorWindow:
                 break
             if event[0] == 'render':
                 _, gen, item, im, err = event
+                self.preview_pending.discard(item)
                 if im is not None:
                     self.preview_cache[item] = im
+                    self.preview_cache.move_to_end(item)
                     if len(self.preview_cache) > 12:
                         self.preview_cache.popitem(last=False)
-                if gen == self.preview_generation:
-                    if err:
-                        self.preview.configure(text=f'No se pudo mostrar: {err}', image='')
-                    else:
-                        self._show(im)
+                # Puede haberse iniciado como precarga: mostrar si sigue seleccionada.
+                active = self.pages[self.current()] if self.pages else None
+                if item == active and im is not None:
+                    self._show(im)
+                    self._prefetch_neighbors()
+                elif item == active and err:
+                    self.preview.configure(text=f'No se pudo mostrar: {err}', image='')
+            elif event[0] == 'overview_render':
+                _, gen, index, item, im, err = event
+                if im is not None:
+                    self.overview_cache[item] = im
+                    self.overview_cache.move_to_end(item)
+                    if len(self.overview_cache) > 64:
+                        self.overview_cache.popitem(last=False)
+                if gen == self.overview_generation and self.overview_window is not None:
+                    if im is not None:
+                        self._overview_display(index, item, im)
+                    elif index in self.overview_buttons:
+                        self.overview_buttons[index].configure(text=f'Página {index+1}: error')
+            elif event[0] == 'overview_error':
+                if event[1] == self.overview_generation:
+                    self.state.set(f'No se pudieron cargar miniaturas: {event[2]}')
             elif event[0] == 'progress':
                 self.state.set(f'Guardando página {event[1]} de {event[2]}...')
             elif event[0] == 'done':
@@ -442,8 +588,11 @@ class PdfEditorWindow:
         if self.pages != self.saved_pages:
             if not messagebox.askyesno('Cerrar sin guardar', '¿Cerrar esta ventana? Los cambios no guardados se perderán.', parent=self.window):
                 return
+        if self.overview_window is not None:
+            self._close_overview()
         self.window.destroy()
         self.render_pool.shutdown(wait=False, cancel_futures=True)
+        self.overview_pool.shutdown(wait=False, cancel_futures=True)
 
 
 def open_editor(parent):

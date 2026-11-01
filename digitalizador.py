@@ -328,10 +328,12 @@ def gui_main():
             self.busy = False
             self.preview_photos: list[ImageTk.PhotoImage] = []
             self.preview_cache: OrderedDict = OrderedDict()
+            self.preview_pending = set()
             self.preview_token = 0
             self.preview_after = None
             self.preview_pool = ThreadPoolExecutor(max_workers=2)
             self.page_position = tk.StringVar(value='Página 0 de 0')
+            self.crop_loading = False
 
             style = ttk.Style(root)
             if "clam" in style.theme_names():
@@ -430,6 +432,8 @@ def gui_main():
             self.paths = chosen_paths
             self.manual_corners = {}
             self.preview_cache.clear()
+            self.preview_pending.clear()
+            self.preview_token += 1
             if not self.pdf_name.get().strip() or self.pdf_name.get().strip() == self.previous_folder_name:
                 self.pdf_name.set(self.folder.name)
             self.previous_folder_name = self.folder.name
@@ -508,17 +512,21 @@ def gui_main():
                 self.preview_cache.move_to_end(key)
                 orig, result, cropped = self.preview_cache[key]
                 self._show_preview(photo, orig, result, cropped)
+                self._prefetch_photo_neighbors(index)
                 return
             self.preview_status.set(f'Preparando vista rápida de {photo.name}...')
             self.preview_after = self.root.after(65, lambda: self._submit_preview(token, key))
 
         def _submit_preview(self, token, key):
+            if key in self.preview_pending or key in self.preview_cache:
+                return
+            if len(self.preview_pending) >= 6:
+                return
             photo, crop, _ = key
             manual = self.manual_corners.get(photo)
+            self.preview_pending.add(key)
             # Procesamiento fuera del hilo de interfaz: el usuario puede navegar mientras carga.
             def work():
-                if token != self.preview_token:
-                    return  # No procesar miniaturas que ya no están seleccionadas.
                 try:
                     result = preview_pair(photo, crop, manual)
                     self.events.put(('preview', token, key, result, None))
@@ -526,23 +534,43 @@ def gui_main():
                     self.events.put(('preview', token, key, None, str(exc)))
             self.preview_pool.submit(work)
 
+        def _prefetch_photo_neighbors(self, index):
+            """Precarga fotos contiguas para que Anterior/Siguiente responda al instante."""
+            for n in (index + 1, index - 1):
+                if 0 <= n < len(self.paths):
+                    photo = self.paths[n]
+                    key = (photo, self.auto_crop.get(),
+                           tuple(self.manual_corners[photo].ravel()) if photo in self.manual_corners else None)
+                    self._submit_preview(-1, key)
+
         def adjust_corners(self):
-            """Editor opcional para las fotos difíciles, con cuatro puntos arrastrables."""
-            if self.busy or not self.paths:
+            """Carga la foto para ajustar esquinas sin bloquear el hilo gráfico."""
+            if self.busy or not self.paths or self.crop_loading:
                 return
             selected = self.listbox.curselection()
             if not selected:
                 return
             photo = self.paths[selected[0]]
-            try:
-                preview, (w, h) = preview_image(photo, 1100)
-            except Exception as exc:
-                messagebox.showerror("No se puede abrir", str(exc))
-                return
+            self.crop_loading = True
+            self.manual_button.state(["disabled"])
+            self.preview_status.set(f"Abriendo ajuste de esquinas de {photo.name}...")
+
+            def worker():
+                try:
+                    preview, size = preview_image(photo, 840)
+                    detection = find_document_corners(np.asarray(preview))
+                    self.events.put(('crop_ready', photo, preview, size, detection, None))
+                except Exception as exc:
+                    self.events.put(('crop_ready', photo, None, None, None, str(exc)))
+
+            self.preview_pool.submit(worker)
+
+        def show_crop_editor(self, photo, preview, full_size, detected_small):
+            """La interfaz Tk y su imagen se construyen únicamente en el hilo principal."""
+            w, h = full_size
             width, height = preview.size
             ratio_x, ratio_y = width / w, height / h
             img = ImageTk.PhotoImage(preview)
-            detected_small = find_document_corners(np.asarray(preview))
             detected = (detected_small / np.float32([ratio_x, ratio_y])
                         if detected_small is not None else None)
             preview.close()
@@ -680,15 +708,31 @@ def gui_main():
                     break
                 if event[0] == 'preview':
                     _, token, key, result, failure = event
+                    self.preview_pending.discard(key)
                     if result is not None:
                         self.preview_cache[key] = result
                         if len(self.preview_cache) > 18:
                             self.preview_cache.popitem(last=False)
-                    if token == self.preview_token:
-                        if failure:
-                            self.preview_status.set(f'Vista previa no disponible: {failure}')
-                        elif result:
-                            self._show_preview(key[0], *result)
+                    current = self.listbox.curselection()
+                    if current and self.paths[current[0]] == key[0]:
+                        expected = (key[0], self.auto_crop.get(),
+                                    tuple(self.manual_corners[key[0]].ravel())
+                                    if key[0] in self.manual_corners else None)
+                        if key == expected:
+                            if failure:
+                                self.preview_status.set(f'Vista previa no disponible: {failure}')
+                            elif result:
+                                self._show_preview(key[0], *result)
+                                self._prefetch_photo_neighbors(current[0])
+                elif event[0] == 'crop_ready':
+                    _, photo, preview, size, detection, failure = event
+                    self.crop_loading = False
+                    if not self.busy:
+                        self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
+                    if failure:
+                        messagebox.showerror("No se puede abrir", failure)
+                    else:
+                        self.show_crop_editor(photo, preview, size, detection)
                 elif event[0] == "progress":
                     _, n, total, name = event
                     self.progress.configure(value=n)

@@ -9,6 +9,7 @@ Una aplicación local para **Windows** que convierte fotografías de documentos 
 1. Selecciona **Abrir PDF existente y corregir páginas**.
 2. El programa abre el PDF y muestra **Página X de Y**, número total de páginas y tamaño del PDF.
 3. Navega con **Anterior**, **Siguiente**, teclas **Alt + ← / →**, **RePág / AvPág**, o escribe un número en **Ir a**.
+   Para revisar muchas páginas de golpe, pulsa **Ver 16 páginas** y elige una miniatura. Puedes pasar a los siguientes bloques de 16 páginas.
 4. Selecciona la página borrosa y usa **Reemplazar página con foto**; para una hoja faltante elige **Insertar antes** o **Insertar después**.
 5. Para revertir una modificación errónea utiliza **Deshacer**.
 6. **Guardar PDF revisado...** genera una copia nueva `_revisado.pdf` y verifica que contenga todas las páginas. Nunca sobrescribe el documento anterior.
@@ -20,7 +21,9 @@ Las páginas que no cambias **se copian directamente del PDF**, sin recomprimir 
 ### Vistas previas rápidas
 
 - La vista previa utiliza una copia pequeña en memoria, sin procesar cada foto de 12 o 48 megapíxeles mientras navegas.
-- El procesamiento de vista previa ocurre en segundo hilo y conserva las páginas visualizadas en caché.
+- El procesamiento de vista previa ocurre en segundo hilo, conserva las páginas visualizadas en caché y precarga las páginas anterior y siguiente.
+- Abrir el ajuste de las cuatro esquinas también se prepara en segundo hilo para no congelar la ventana.
+- La vista general del PDF muestra 16 miniaturas a la vez y se carga en segundo hilo; puedes saltar a cualquier página del bloque.
 - Botones Anterior/Siguiente y numeración para recorrer muchas hojas rápidamente.
 - El recorte final se calcula **solo al crear el PDF**, con la foto de alta resolución.
 - El ajuste manual de esquinas usa miniatura para responder más rápido, sin limitar la calidad final del documento.
@@ -95,6 +98,8 @@ python -m unittest discover -s tests -v
 - La detección depende del contraste, la iluminación y que el documento sea visible. Comprueba el resultado antes de archivar o descartar el papel.
 - Los ajustes manuales de las cuatro esquinas solo se mantienen en la sesión actual.
 - Las nuevas páginas se guardan como imágenes JPEG de alta calidad (hasta 6000 px por lado) dentro del PDF, por lo que no son píxeles idénticos a la foto original. Se mantiene la apariencia a color, sin filtros de blanco y negro.
+- Las miniaturas son solo para navegación; **no reemplazan la imagen de alta resolución dentro del PDF**.
+- El archivo se guarda como copia revisada, nunca encima del PDF original. Verifica página por página a tamaño real, que el número de páginas sea correcto y mantén al menos una copia independiente antes de eliminar fotos o papel. Un documento borroso desde la cámara no se puede recuperar por aumentar la resolución del PDF.
 - Si una fotografía no puede abrirse, la creación se cancela para no guardar un PDF incompleto. La imagen original no se altera.
 
 ## Archivos principales

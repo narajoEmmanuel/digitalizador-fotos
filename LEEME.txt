@@ -97,3 +97,15 @@ Para corregir un PDF aunque ya no existan las fotos de origen:
 Puedes revisar fotos mas rapido con Anterior y Siguiente y usar el editor
 para navegar por PDF sin tener que conservar todas las fotografias.
 Conserva una segunda copia de seguridad antes de borrar los originales.
+
+REVISIÓN RÁPIDA DEL PDF
+----------------------
+La opción "Abrir PDF existente y corregir páginas" permite revisar 16
+miniaturas a la vez con "Ver 16 páginas". Haz clic en la miniatura para
+ir directamente a la página, y usa Anterior/Siguiente si quieres revisar
+detalles. Si reemplazas o insertas una foto, el PDF nuevo se guarda como
+copia revisada, sin modificar el archivo original.
+
+Las vistas previas son de tamaño reducido para navegar rápidamente.
+El PDF conserva la alta resolución de las fotos incluidas. Confirma que
+la copia final se lee al 100 por ciento antes de borrar los originales.

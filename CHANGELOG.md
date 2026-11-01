@@ -6,7 +6,9 @@
 - Copia nueva de seguridad obligatoria: no se sobrescribe el PDF de origen.
 - Contador y navegación rápida de páginas, campo «Ir a», teclas Alt+flechas y AvPág/RePág.
 - Páginas ya digitalizadas se copian sin volver a convertirlas en JPG.
-- Vistas previas de fotos ligeras, asíncronas y con caché; el recorte manual usa miniaturas.
+- Vistas previas ligeras, asíncronas, con caché y precarga de páginas adyacentes.
+- Ajuste manual de esquinas carga en segundo hilo para evitar bloquear la ventana.
+- Vista general del PDF con 16 miniaturas y salto directo a página, carga en segundo hilo.
 - Aumentada la resolución máxima de exportación a 6000 píxeles y JPEG de calidad 97, sin OCR.
 - Exportación inicial ahora aborta ante páginas fallidas en lugar de producir un archivo incompleto.
 - 11 pruebas automatizadas para orden, recorte, protección de originales e inserción/reemplazo.
