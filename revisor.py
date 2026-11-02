@@ -2,7 +2,7 @@
 from pathlib import Path
 import queue
 from PIL import Image, ImageTk
-from vistas import PhotoMatrix, validated_photo_corners
+from revisor_base import PhotoMatrix, validated_photo_corners
 
 
 class ReviewWorkspace(PhotoMatrix):
