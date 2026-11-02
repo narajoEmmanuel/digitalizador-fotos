@@ -1,5 +1,14 @@
 # Historial de cambios
 
+## 1.5 (2026-11-01)
+
+- Matriz rápida de 16 recortes previstos antes de crear el PDF, con navegación por bloques.
+- Pulsar una miniatura selecciona la foto y abre su ajuste manual de cuatro esquinas.
+- Vista final ampliada que renderiza el PDF guardado, con zoom, ajuste a ventana, desplazamiento y pantalla completa (F11).
+- Visor ampliado accesible tanto desde la ventana principal como desde el editor de PDF existente.
+- Renderizado en segundo plano y límite de memoria para las vistas, sin modificar ni recomprimir el archivo.
+- Dos pruebas nuevas de integridad del PDF y zoom, además de comprobación visual de la interfaz.
+
 ## 1.4 (2026-11-01)
 
 - Selección automática de hoja más fiable con fondos de color o estampados: contraste entre interior y exterior en cada lado del papel, sin preferir el marco de la imagen por su mayor tamaño.
