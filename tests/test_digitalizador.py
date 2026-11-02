@@ -417,7 +417,7 @@ class DigitalizadorTests(unittest.TestCase):
     def test_optimizador_principal_descarta_picos(self):
         import digitalizador
         corners = np.float32([[84, 91], [517, 100], [529, 688], [70, 696]])
-        spike = np.float32([[300, 40], [460, 380], [300, 720], [120, 380]])
+        spike = np.float32([[300, 50], [440, 400], [300, 750], [160, 400]])
         with (mock.patch("digitalizador.preview_image",
                          return_value=(Image.new("RGB", (600, 800), "white"),
                                        (600, 800))),
