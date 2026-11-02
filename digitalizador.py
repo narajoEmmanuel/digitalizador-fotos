@@ -236,10 +236,12 @@ def create_pdf(
     paths: list[Path], target: Path, auto_crop: bool = True,
     progress: Callable[[int, int, str], None] | None = None,
     manual_corners: dict[Path, np.ndarray] | None = None,
+    preserve_input_order: bool = False,
 ) -> dict:
     if not paths:
         raise ValueError("La carpeta no contiene fotografías compatibles.")
-    paths = capture_order(paths)  # Garantiza el orden EXIF incluso desde la consola o la API.
+    # Orden EXIF en importación; las inserciones/sustituciones respetan su posición manual.
+    paths = list(paths) if preserve_input_order else capture_order(paths)
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         raise FileExistsError(f"Ya existe {target}. Elige otro nombre para proteger tu PDF anterior.")
@@ -471,26 +473,60 @@ def gui_main():
             from editor_pdf import open_editor
             open_editor(self.root)
 
+        def _sync_review_list(self, focus):
+            """Refleja las correcciones del revisor sin reordenar las páginas."""
+            self.preview_cache.clear()
+            self.preview_pending.clear()
+            self.preview_token += 1
+            self.listbox.delete(0, "end")
+            for photo in self.paths:
+                try:
+                    timestamp = f"{capture_datetime(photo):%d/%m %H:%M:%S}"
+                except ValueError:
+                    timestamp = "Añadida manualmente"
+                self.listbox.insert("end", f"{timestamp}  {photo.name}")
+            self.listbox.selection_set(focus)
+            self.listbox.activate(focus)
+            self.listbox.see(focus)
+            self.refresh_preview()
+            self.progress_text.set(f"{len(self.paths)} páginas listas para revisión y exportación")
+
+        def _replace_review_photo(self, index, new_path):
+            self.paths[index] = new_path
+            self._sync_review_list(index)
+
+        def _insert_review_photo(self, index, new_path):
+            self.paths.insert(index, new_path)
+            self._sync_review_list(index)
+
         def open_matrix(self):
-            """Compara los recortes calculados antes de crear el PDF; clic abre ajuste manual."""
+            """Matriz, ajuste, zoom y sustituciones ANTES de exportar el PDF."""
             if not self.paths or self.busy:
                 return
-            from vistas import PhotoMatrix
+            from revisor import ReviewWorkspace
+            manual = self.manual_corners
             auto = self.auto_crop.get()
-            manual = {k: v.copy() for k, v in self.manual_corners.items()}
-            def processed(path):
-                orig, result, _ = preview_pair(path, auto, manual.get(path))
-                orig.close()
-                return result
-            PhotoMatrix(self.root, self.paths, processed, self._matrix_edit)
 
-        def _matrix_edit(self, index):
-            self.listbox.selection_clear(0, "end")
-            self.listbox.selection_set(index)
-            self.listbox.activate(index)
-            self.listbox.see(index)
+            def processed(path):
+                original, result, _ = preview_pair(path, auto or path in manual, manual.get(path))
+                original.close()
+                return result
+
+            ReviewWorkspace(self.root, self.paths, processed, self._matrix_save,
+                            preview_image, manual, self._replace_review_photo,
+                            self._insert_review_photo, self.make_pdf, auto_crop=auto)
+
+        def _matrix_save(self, index, corners):
+            photo = self.paths[index]
+            self.manual_corners[photo] = corners.copy()
+            self.auto_crop.set(True)
+            self.preview_cache.clear()
+            if self.listbox.curselection() != (index,):
+                self.listbox.selection_clear(0, "end")
+                self.listbox.selection_set(index)
+                self.listbox.activate(index)
+                self.listbox.see(index)
             self.refresh_preview()
-            self.adjust_corners()
 
         def open_pdf_matrix(self):
             from editor_pdf import PdfEditorWindow, open_editor
@@ -776,7 +812,7 @@ def gui_main():
                 try:
                     output = create_pdf(paths, Path(dest), should_crop,
                         progress=lambda number, total, name: self.events.put(("progress", number, total, name)),
-                        manual_corners=manual)
+                        manual_corners=manual, preserve_input_order=True)
                     self.events.put(("done", output))
                 except Exception as exc:
                     self.events.put(("failed", str(exc), traceback.format_exc()))
