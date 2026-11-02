@@ -678,6 +678,7 @@ def gui_main():
             self.preview_cache: OrderedDict = OrderedDict()
             self.preview_pending = set()
             self.preview_token = 0
+            self.preview_revision = 0
             self.preview_after = None
             self.preview_pool = ThreadPoolExecutor(max_workers=2)
             self.detection_pool = ThreadPoolExecutor(max_workers=1)
@@ -827,6 +828,7 @@ def gui_main():
             self.active_review = None
             self.manual_corners = {}
             self.rotations = {}
+            self.preview_revision += 1
             self.preview_cache.clear()
             self.preview_pending.clear()
             self.preview_token += 1
@@ -865,6 +867,7 @@ def gui_main():
                 return
             enabled = bool(self.auto_crop.get())
             self.auto_crop_enabled = enabled
+            self.preview_revision += 1
             self.preview_cache.clear()
             self.preview_pending.clear()
             self.preview_token += 1
@@ -918,6 +921,9 @@ def gui_main():
             self.optimize_all_button.state(["disabled"])
             self.crop_check.state(["disabled"])
             self.folder_button.state(["disabled"])
+            review = self.active_review
+            if review is not None and not review.closed:
+                review.export_button.state(["disabled"])
             self.progress.configure(mode="determinate", maximum=100, value=0)
             self.progress_text.set(f"Optimizando 0/{len(self.paths)} páginas · 0 %")
             self.crop_status.set(f"Optimizando: 0/{len(self.paths)}")
@@ -983,6 +989,7 @@ def gui_main():
 
         def _sync_review_list(self, focus):
             """Refleja las correcciones del revisor sin reordenar las páginas."""
+            self.preview_revision += 1
             self.preview_cache.clear()
             self.preview_pending.clear()
             self.preview_token += 1
@@ -1020,6 +1027,7 @@ def gui_main():
                 self.rotations[photo] = rotation
             else:
                 self.rotations.pop(photo, None)
+            self.preview_revision += 1
             self.preview_cache.clear()
             self.preview_pending.clear()
             self.preview_token += 1
@@ -1067,6 +1075,8 @@ def gui_main():
             self.active_review = review
             review.set_detection_progress(
                 self.detection_done, self.detection_total)
+            if self.batch_optimizing:
+                review.export_button.state(["disabled"])
             if focus_index is not None:
                 focus_review_page(review, focus_index, edit_corners)
 
@@ -1074,6 +1084,7 @@ def gui_main():
             photo = self.paths[index]
             self.manual_corners[photo] = corners.copy()
             # Guardar una hoja no debe cambiar el recorte de las demás páginas.
+            self.preview_revision += 1
             self.preview_cache.clear()
             if self.listbox.curselection() != (index,):
                 self.listbox.selection_clear(0, "end")
@@ -1172,13 +1183,14 @@ def gui_main():
             photo, crop, _, rotation = key
             manual = self.manual_corners.get(photo)
             self.preview_pending.add(key)
+            revision = self.preview_revision
             # Procesamiento fuera del hilo de interfaz: el usuario puede navegar mientras carga.
             def work():
                 try:
                     result = preview_pair(photo, crop, manual, rotation=rotation)
-                    self.events.put(('preview', token, key, result, None))
+                    self.events.put(('preview', token, key, result, None, revision))
                 except Exception as exc:
-                    self.events.put(('preview', token, key, None, str(exc)))
+                    self.events.put(('preview', token, key, None, str(exc), revision))
             self.preview_pool.submit(work)
 
         def _prefetch_photo_neighbors(self, index):
@@ -1205,6 +1217,13 @@ def gui_main():
             return normalized_pdf_name(value)
 
         def make_pdf(self, review=None):
+            if self.batch_optimizing:
+                message = "La optimización del lote sigue en curso. Exporta cuando termine."
+                if review is not None and not review.closed:
+                    review.status.set(message)
+                else:
+                    self.progress_text.set(message)
+                return
             if not self.folder or not self.paths or self.busy or self.import_loading:
                 return
             dialog_parent = (review.window if review is not None and not review.closed
@@ -1285,7 +1304,12 @@ def gui_main():
                     else:
                         self._apply_folder(chosen_folder, chosen_paths)
                 elif event[0] == 'preview':
-                    _, token, key, result, failure = event
+                    _, token, key, result, failure, revision = event
+                    if revision != self.preview_revision:
+                        if result is not None:
+                            result[0].close()
+                            result[1].close()
+                        continue
                     self.preview_pending.discard(key)
                     if result is not None:
                         self.preview_cache[key] = result
@@ -1324,6 +1348,8 @@ def gui_main():
                         self.make_button.state(["!disabled"])
                         self.crop_check.state(["!disabled"])
                         self.folder_button.state(["!disabled"])
+                        if review is not None and not review.closed:
+                            review.export_button.state(["!disabled"])
                         self.crop_status.set(f"Listo: {total}/{total}")
                         self.progress_text.set(
                             f"Optimización finalizada: {improved} mejoradas, "
@@ -1331,6 +1357,7 @@ def gui_main():
                             + (f", {failed} sin detección segura." if failed else "."))
                         # Invalidar imágenes de trabajo antiguas para que la
                         # matriz y el visor muestren las nuevas esquinas.
+                        self.preview_revision += 1
                         self.preview_cache.clear()
                         self.preview_pending.clear()
                         self.preview_token += 1
