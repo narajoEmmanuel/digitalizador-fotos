@@ -157,6 +157,35 @@ class DigitalizadorTests(unittest.TestCase):
         self.assertGreater(np.min(detected[:, 0]), 60)
         self.assertLess(np.max(detected[:, 0]), w - 60)
 
+    def test_segunda_busqueda_refina_esquinas_desviadas(self):
+        import cv2
+        from recorte import refinar_esquinas
+        h, w = 900, 700
+        image = np.full((h, w, 3), (58, 91, 132), dtype=np.uint8)
+        sheet = np.full((600, 450, 3), (245, 240, 232), dtype=np.uint8)
+        for row in range(70, 590, 26):
+            cv2.line(sheet, (2, row), (445, row), (180, 180, 180), 1)
+        expected = np.float32([[100, 85], [585, 120], [612, 765], [80, 780]])
+        corners = np.float32([[0, 0], [449, 0], [449, 599], [0, 599]])
+        transform = cv2.getPerspectiveTransform(corners, expected)
+        warped = cv2.warpPerspective(sheet, transform, (w, h))
+        mask = cv2.warpPerspective(np.full((600, 450), 255, np.uint8),
+                                   transform, (w, h))
+        image[mask > 90] = warped[mask > 90]
+        initial = expected + np.float32([[7, 12], [-9, 7], [-7, -11], [8, -6]])
+        updated = refinar_esquinas(image, initial)
+        self.assertIsNotNone(updated)
+        self.assertLess(np.mean(np.linalg.norm(updated-expected, axis=1)),
+                        np.mean(np.linalg.norm(initial-expected, axis=1)) * .6)
+        # Si las esquinas ya coinciden con la hoja, no forzar desplazamientos.
+        self.assertIsNone(refinar_esquinas(image, expected))
+
+    def test_refinamiento_sin_bordes_no_modifica_la_hoja(self):
+        from recorte import refinar_esquinas
+        image = np.full((750, 600, 3), (210, 210, 210), dtype=np.uint8)
+        approximate = np.float32([[70, 70], [540, 70], [540, 680], [70, 680]])
+        self.assertIsNone(refinar_esquinas(image, approximate))
+
     def test_marco_fotografico_no_es_una_hoja(self):
         # Con solo el límite de la imagen, se conserva la foto sin cortar.
         photo = np.full((700, 500, 3), (190, 180, 170), dtype=np.uint8)
