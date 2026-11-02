@@ -1,5 +1,13 @@
 # Historial de cambios
 
+## 1.8.2 (2026-11-01)
+
+- Interruptor persistente **Activar esquinas / Desactivar esquinas** en el panel izquierdo.
+- El ajuste permanece activo al cambiar de hoja o avanzar entre bloques de 16 páginas.
+- Guardar el recorte de una hoja no desactiva la herramienta. Cada hoja conserva sus propios puntos.
+- Al desactivar se muestra la vista procesada con zoom. Los cambios sin guardar se confirman o descartan antes de cambiar de modo.
+
+
 ## 1.8.1 (2026-11-01)
 
 - Todos los botones del revisor se trasladaron bajo la matriz del panel izquierdo.
