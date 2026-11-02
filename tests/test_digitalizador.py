@@ -525,6 +525,72 @@ class DigitalizadorTests(unittest.TestCase):
                 self.assertGreater(color[1], 210)
                 self.assertGreater(color[2], 200)
 
+    def test_jpeg_rapido_conserva_pixeles_y_calidad(self):
+        """Desactivar optimize cambia el tamaño, no los píxeles decodificados."""
+        from io import BytesIO
+        from digitalizador import encode_pdf_jpeg
+        rng = np.random.default_rng(7)
+        pixels = np.full((320, 240, 3), (233, 232, 215), dtype=np.uint8)
+        pixels += rng.integers(0, 13, size=pixels.shape, dtype=np.uint8)
+        image = Image.fromarray(pixels, "RGB")
+        old_buffer = BytesIO()
+        image.save(old_buffer, "JPEG", quality=97, subsampling=0, optimize=True)
+        fast = encode_pdf_jpeg(image)
+        with (Image.open(BytesIO(old_buffer.getvalue())) as previous,
+              Image.open(BytesIO(fast)) as current):
+            np.testing.assert_array_equal(np.asarray(previous), np.asarray(current))
+            self.assertEqual(current.size, previous.size)
+            self.assertEqual(current.layer, previous.layer)
+        image.close()
+
+    def test_pdf_incrusta_jpeg_directo_sin_recompresion_ni_archivos_por_pagina(self):
+        import fitz
+        import digitalizador
+        with tempfile.TemporaryDirectory() as d:
+            folder = Path(d)
+            photo = folder / "pagina.jpg"
+            pixels = np.full((420, 305, 3), (230, 212, 200), dtype=np.uint8)
+            pixels[35:45, 15:290] = (45, 60, 92)
+            Image.fromarray(pixels, "RGB").save(photo, quality=98)
+            pdf = folder / "resultado.pdf"
+            encoded = []
+            original_encoder = digitalizador.encode_pdf_jpeg
+            def capture(image):
+                jpeg = original_encoder(image)
+                encoded.append(jpeg)
+                return jpeg
+            stages = []
+            with (mock.patch("digitalizador.encode_pdf_jpeg", side_effect=capture),
+                  mock.patch("digitalizador.tempfile.TemporaryDirectory",
+                             side_effect=AssertionError("No crear JPEG temporales"))):
+                result = create_pdf([photo], pdf, auto_crop=False,
+                    preserve_input_order=True, on_stage=stages.append)
+            self.assertEqual(stages, ["saving", "verifying"])
+            self.assertEqual(result["pages"], 1)
+            self.assertEqual(len(encoded), 1)
+            with fitz.open(pdf) as document:
+                info = document.extract_image(document[0].get_images(full=True)[0][0])
+                self.assertEqual(info["ext"], "jpeg")
+                self.assertEqual(info["image"], encoded[0])
+                self.assertEqual((info["width"], info["height"]), (305, 420))
+            self.assertFalse(list(folder.glob("pagina_*.jpg")))
+            self.assertFalse(list(folder.glob(".digitalizador_*.pdf")))
+
+    def test_progreso_da_estimacion_sin_inventar_tiempo_de_guardado(self):
+        from digitalizador import export_progress_details, format_export_duration
+        self.assertEqual(format_export_duration(92), "1 min 32 s")
+        self.assertEqual(format_export_duration(8.4), "8 s")
+        start = export_progress_details(1, 107, 1.2)
+        self.assertIn("1/107 páginas", start)
+        self.assertNotIn("restantes", start)
+        middle = export_progress_details(30, 107, 60)
+        self.assertIn("30/107", middle)
+        self.assertIn("28 %", middle)
+        self.assertIn("aprox. 2 min 34 s restantes", middle)
+        complete = export_progress_details(107, 107, 400)
+        self.assertIn("100 %", complete)
+        self.assertNotIn("restantes", complete)
+
     def test_pdf_personalizado_sin_cambiar_original(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
