@@ -11,6 +11,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from digitalizador import (capture_datetime, create_pdf, discover_images, prepare_page,
+                          preview_pair, automatic_page_corners,
                           normalize_pdf_destination, normalized_pdf_name, verify_pdf_export,
                           build_export_destination, export_success_text)
 from recorte import detectar_hoja
@@ -110,6 +111,58 @@ class DigitalizadorTests(unittest.TestCase):
         import cv2
         cv2.rectangle(photo, (1, 1), (498, 698), (10, 20, 30), 3)
         self.assertIsNone(detectar_hoja(photo))
+
+    def test_vista_previa_y_pdf_comparten_esquinas(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "hoja.jpg"
+            image = np.full((800, 600, 3), (40, 80, 120), dtype=np.uint8)
+            image[90:710, 80:520] = [240, 238, 225]
+            Image.fromarray(image).save(path, quality=96)
+            quad, reason = automatic_page_corners(path)
+            self.assertIsNone(reason)
+            self.assertIsNotNone(quad)
+            original, thumbnail, preview_cropped = preview_pair(path, True, None)
+            full, final_cropped = prepare_page(path, True)
+            self.assertTrue(preview_cropped)
+            self.assertTrue(final_cropped)
+            self.assertAlmostEqual(thumbnail.width/thumbnail.height,
+                                   full.width/full.height, delta=.015)
+            original.close()
+            thumbnail.close()
+            full.close()
+
+    def test_recorte_inseguro_no_se_deforma_y_se_marca(self):
+        import digitalizador
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "hoja.jpg"
+            Image.new("RGB", (700, 1000), "beige").save(path)
+            quad = np.float32([[70, 80], [630, 80], [630, 920], [70, 920]])
+            digitalizador._cached_auto_corners.cache_clear()
+            with mock.patch("digitalizador.find_document_corners",
+                            side_effect=[quad, None]):
+                corners, reason = automatic_page_corners(path)
+            self.assertIsNone(corners)
+            self.assertIn("inestables", reason)
+            digitalizador._cached_auto_corners.cache_clear()
+
+    def test_recorte_manual_tiene_prioridad_sobre_detector(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "hoja.jpg"
+            image = np.full((850, 640, 3), (25, 80, 130), dtype=np.uint8)
+            image[80:760, 70:570] = 235
+            Image.fromarray(image).save(path)
+            corners = np.float32([[70, 80], [569, 80], [569, 759], [70, 759]])
+            with mock.patch("digitalizador.automatic_page_corners",
+                            side_effect=AssertionError("Detector no debe ejecutarse")):
+                original, thumbnail, cropped_preview = preview_pair(path, False, corners)
+                final, cropped_pdf = prepare_page(path, False, corners)
+            self.assertTrue(cropped_preview)
+            self.assertTrue(cropped_pdf)
+            self.assertAlmostEqual(thumbnail.width/thumbnail.height,
+                                   final.width/final.height, delta=.02)
+            original.close()
+            thumbnail.close()
+            final.close()
 
     def test_pagina_se_recorta_y_preserva_color(self):
         with tempfile.TemporaryDirectory() as d:
