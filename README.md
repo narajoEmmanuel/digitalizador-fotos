@@ -1,10 +1,15 @@
 # Digitalizador de Fotos
 
+## Flujo principal (v1.8)
+
+Abre la carpeta de fotografías y pulsa **Revisar en matriz**. Se muestran 16 páginas por bloque, sin requerir marcas ni aprobaciones. Haz una revisión visual rápida de las miniaturas y selecciona solo las hojas que necesiten zoom, recorte manual o sustitución. La selección enseña el resultado final a color y permite comprobar la nitidez a su resolución original. Los controles **Editar recorte**, **Detectar**, **Guardar recorte**, **Sustituir**, **+ Antes** y **+ Después** aparecen en el revisor según corresponda. **Exportar PDF** no obliga a aprobar ninguna página. Los recortes ajustados manualmente se guardan para la exportación, mientras que las fotografías originales permanecen intactas.
+
+
 ## Vista de calidad final antes de exportar (v1.7)
 
 Selecciona una miniatura y **verás directamente la hoja procesada, sin puntos de recorte**. La imagen se procesa desde la foto original a resolución completa, aplicando el mismo recorte, dimensiones máximas y compresión JPEG (calidad 97, submuestreo 0) que usa la exportación PDF. El indicador muestra las dimensiones finales en píxeles y el zoom actual. **Zoom al 100 %** significa un píxel de la fotografía final por píxel de pantalla, para comprobar nitidez real; acercar más no recupera detalle. La rueda hace zoom alrededor del puntero, puedes arrastrar para moverte y hacer doble clic para encajar la hoja.
 
-Si una hoja está mal recortada, selecciona **Editar esquinas**; solo entonces verás los cuatro puntos. **Detectar hoja de nuevo** recalcula los puntos y avisa cuando no encuentra una hoja segura o el resultado no cambia. **Guardar recorte y ver resultado** almacena las esquinas, actualiza la miniatura y regresa automáticamente a la vista final. **Marcar página revisada ✓** solamente añade una marca visual de que comprobaste la resolución y legibilidad, sin modificar los píxeles. Antes de exportar se avisa de las páginas que sigan sin revisar.
+Si una hoja está mal recortada, selecciona **Editar esquinas**; solo entonces verás los cuatro puntos. **Detectar hoja de nuevo** recalcula los puntos y avisa cuando no encuentra una hoja segura o el resultado no cambia. **Guardar recorte y ver resultado** almacena las esquinas, actualiza la miniatura y regresa automáticamente a la vista final.. No existe un paso de aprobación por página.
 
 La vista final se obtiene a partir del mismo procesamiento de alta resolución que el PDF, no de una miniatura. El lector PDF puede mostrar pequeños cambios de interpretación de color según el software. La calidad de la fotografía original y el recorte siguen siendo el límite real; una foto desenfocada debe sustituirse antes de exportar.
 
@@ -17,8 +22,8 @@ Elige primero una carpeta con fotografías del iPhone. La importación inicial l
 2. Ajusta los cuatro puntos y pulsa **Guardar recorte**. La matriz no se cierra y el recorte se actualiza.
 3. Pulsa **Vista ampliada** para comprobar **antes de exportar** el recorte real, calculado desde la fotografía de alta resolución. Utiliza **Ajustar**, **100 %**, **+**, **−** y arrastra la vista para examinar el texto.
 4. Si una foto quedó borrosa, pulsa **Sustituir foto**. Para una página faltante, selecciona otra hoja y pulsa **Insertar antes** o **Insertar después**. Las fotos nuevas no necesitan EXIF y mantienen la posición que hayas elegido.
-5. Marca **Aprobar ✓** para identificar hojas revisadas. El sistema advierte si aún hay hojas sin aprobar.
-6. Cuando estés satisfecho, pulsa **Exportar PDF después de revisar**, elige nombre y ubicación. Se mantiene el color y el recorte de alta resolución. Ninguna fotografía original se modifica.
+5. Revisa de un vistazo las miniaturas y abre únicamente las que te interesen.
+6. Cuando estés satisfecho, pulsa **Exportar PDF**, elige nombre y ubicación. Se mantiene el color y el recorte de alta resolución. Ninguna fotografía original se modifica.
 
 La función separada **Abrir PDF existente y corregir páginas** queda reservada para correcciones posteriores. **La vista ampliada del revisor no requiere crear antes un PDF.**
 
@@ -153,4 +158,4 @@ python -m unittest discover -s tests -v
 - `LEEME.txt`: instrucciones incluidas desde la versión 1.1.
 - `tests/`: pruebas automatizadas.
 
-**Versión**: 1.7, revisión del JPEG final en alta resolución, zoom fluido, matriz, edición opcional de esquinas, editor conservador, orden EXIF, sin OCR.
+**Versión**: 1.8, revisión en matriz sin aprobación individual, zoom de resolución final, recortes opcionales, edición de PDF, orden EXIF, sin OCR.

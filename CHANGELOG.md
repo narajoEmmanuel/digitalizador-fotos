@@ -1,5 +1,14 @@
 # Historial de cambios
 
+## 1.8 (2026-11-01)
+
+- Eliminados **Aprobar** por página, contador de páginas revisadas y advertencia al exportar.
+- Matriz de 16 miniaturas para inspección rápida, sin necesidad de abrir cada hoja.
+- Botones y mensajes más cortos, sin instrucciones redundantes en la ventana.
+- Zoom, recorte y sustitución solo cuando se selecciona una página; las fotos originales siguen intactas.
+- Exportación directa una vez hechas las correcciones necesarias.
+
+
 ## 1.7 (2026-11-01)
 
 - Seleccionar una miniatura abre el resultado final sin superponer esquinas.

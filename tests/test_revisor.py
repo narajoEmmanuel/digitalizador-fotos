@@ -96,6 +96,26 @@ class ReviewFlowTests(unittest.TestCase):
         panel._edited.assert_not_called()
         panel.editor_image.close()
 
+    def test_exporta_sin_aprobacion_individual(self):
+        from unittest.mock import Mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.paths = [Path("pag1.jpg"), Path("pag2.jpg")]
+        panel._pending = Mock(return_value=True)
+        panel.on_export = Mock()
+        panel.export()
+        panel.on_export.assert_called_once_with()
+        self.assertFalse(hasattr(panel, "approved"))
+        self.assertFalse(hasattr(ReviewWorkspace, "approve"))
+
+    def test_recorte_sin_aprobacion_individual(self):
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.selected = 0
+        panel.dirty = False
+        panel._edited()
+        self.assertTrue(panel.dirty)
+
     def test_no_permite_esquinas_cruzadas(self):
         with self.assertRaises(ValueError):
             validated_photo_corners(

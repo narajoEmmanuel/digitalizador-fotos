@@ -351,40 +351,37 @@ def gui_main():
             body = ttk.Frame(root, padding=20)
             body.pack(fill="both", expand=True)
             ttk.Label(body, text="Fotografías a PDF", font=("Segoe UI", 21, "bold")).pack(anchor="w")
-            ttk.Label(body, text="Conserva el color original. Sin OCR ni conversión de texto.").pack(anchor="w", pady=(4, 16))
+            ttk.Separator(body).pack(fill="x", pady=(8, 12))
 
             actions = ttk.Frame(body)
             actions.pack(fill="x")
-            self.folder_button = ttk.Button(actions, text="1. Elegir carpeta de fotos", style="Main.TButton", command=self.pick_folder)
+            self.folder_button = ttk.Button(actions, text="Elegir fotos", style="Main.TButton", command=self.pick_folder)
             self.folder_button.pack(side="left")
-            ttk.Button(actions, text="Abrir PDF existente y corregir páginas",
+            ttk.Button(actions, text="Editar PDF existente",
                        command=self.edit_existing_pdf).pack(side="left", padx=(12, 0))
-            self.make_button = ttk.Button(actions, text="3. Crear PDF", style="Main.TButton", command=self.make_pdf)
+            self.make_button = ttk.Button(actions, text="Crear PDF", style="Main.TButton", command=self.make_pdf)
             self.make_button.pack(side="right")
             self.make_button.state(["disabled"])
             name_row = ttk.Frame(body)
             name_row.pack(fill="x", pady=(12, 2))
-            ttk.Label(name_row, text="2. Nombre del PDF:", font=("Segoe UI", 10, "bold")).pack(side="left", padx=(0, 10))
+            ttk.Label(name_row, text="Nombre del PDF:", font=("Segoe UI", 10, "bold")).pack(side="left", padx=(0, 10))
             self.name_entry = ttk.Entry(name_row, textvariable=self.pdf_name, font=("Segoe UI", 11), width=44)
             self.name_entry.pack(side="left", fill="x", expand=True)
             ttk.Label(name_row, text=".pdf", font=("Segoe UI", 10)).pack(side="left", padx=(5, 0))
             ttk.Label(body, textvariable=self.info, wraplength=920).pack(anchor="w", pady=(6, 9))
             crop_row = ttk.Frame(body)
             crop_row.pack(fill="x", pady=(0, 4))
-            ttk.Checkbutton(crop_row, text="Recortar y enderezar las hojas automáticamente", variable=self.auto_crop,
+            ttk.Checkbutton(crop_row, text="Recorte automático", variable=self.auto_crop,
                             command=self.refresh_preview).pack(side="left")
-            self.manual_button = ttk.Button(crop_row, text="Ajustar esquinas de esta hoja", style="Small.TButton", command=self.adjust_corners)
+            self.manual_button = ttk.Button(crop_row, text="Editar esquinas", style="Small.TButton", command=self.adjust_corners)
             self.manual_button.pack(side="right")
             self.manual_button.state(["disabled"])
             review_bar = ttk.Frame(body)
             review_bar.pack(fill="x", pady=(3, 9))
-            self.matrix_btn = ttk.Button(review_bar, text="Revisar antes de exportar (matriz + zoom)",
+            self.matrix_btn = ttk.Button(review_bar, text="Revisar en matriz",
                                          command=self.open_matrix)
             self.matrix_btn.pack(side="left")
             self.matrix_btn.state(["disabled"])
-            ttk.Label(review_bar, text="Ajusta o sustituye hojas antes de crear el PDF.").pack(side="left", padx=(12, 0))
-            ttk.Label(body, text="El programa elimina el fondo cuando identifica la hoja. Puedes ajustar sus cuatro esquinas si es necesario.",
-                      foreground="#667085").pack(anchor="w", pady=(0, 10))
 
             panes = ttk.Panedwindow(body, orient="horizontal")
             panes.pack(fill="both", expand=True)

@@ -30,7 +30,7 @@ def final_export_preview(photo: Path, auto_crop: bool, corners=None) -> Image.Im
 def resolution_info(image: Image.Image, scale: float) -> str:
     """La escala 1.0 corresponde a un píxel real por píxel de pantalla."""
     w, h = image.size
-    return f"Imagen final: {w:,} × {h:,} píxeles  |  Zoom {scale*100:.0f} % (100 % = píxel real)"
+    return f"{w:,} × {h:,} px   ·   {scale*100:.0f} %"
 
 
 
@@ -41,7 +41,6 @@ class ReviewWorkspace(PhotoMatrix):
                  manual_corners, on_replace, on_insert, on_export, auto_crop=True):
         self.mode = "preview"
         self.dirty = False
-        self.approved = set()
         self.big_image = None
         self.big_photo = None
         self.big_token = 0
@@ -54,7 +53,7 @@ class ReviewWorkspace(PhotoMatrix):
         self.auto_crop = auto_crop
         super().__init__(parent, paths, preview_provider, on_save, photo_loader, manual_corners)
         from tkinter import ttk
-        self.window.title("Revisar hojas antes de exportar PDF")
+        self.window.title("Revisión de páginas")
         self.board.bind("<ButtonPress-1>", self._press)
         self.board.bind("<B1-Motion>", self._drag)
         self.board.bind("<ButtonRelease-1>", lambda _event: setattr(self, "drag_start", None))
@@ -64,28 +63,24 @@ class ReviewWorkspace(PhotoMatrix):
         right = self.board.master
         tools = ttk.Frame(right)
         tools.pack(before=self.board, fill="x", pady=(0, 6))
-        self.edit_button = ttk.Button(tools, text="Editar esquinas", command=self.edit_mode)
-        self.preview_button = ttk.Button(tools, text="Ver resultado final", command=self.preview_mode)
-        ttk.Label(tools, text="Rueda: zoom  |  Arrastrar: mover  |  Doble clic: encajar").pack(side="right")
-        self.save_button.configure(text="Guardar recorte y ver resultado")
-        self.reset_button.configure(text="Detectar hoja de nuevo", command=self.reset)
+        self.edit_button = ttk.Button(tools, text="Editar recorte", command=self.edit_mode)
+        self.preview_button = ttk.Button(tools, text="Ver resultado", command=self.preview_mode)
+        self.save_button.configure(text="Guardar recorte")
+        self.reset_button.configure(text="Detectar", command=self.reset)
         self.board.bind("<Double-Button-1>", self._double_click)
         self.board.bind("<Configure>", self._resize)
         changes = ttk.Frame(right)
         changes.pack(before=self.board, fill="x", pady=(0, 6))
-        ttk.Button(changes, text="Sustituir foto", command=self.replace).pack(side="left")
-        ttk.Button(changes, text="Insertar antes", command=lambda: self.insert(False)).pack(side="left", padx=5)
-        ttk.Button(changes, text="Insertar después", command=lambda: self.insert(True)).pack(side="left")
-        ttk.Button(changes, text="Marcar página revisada ✓", command=self.approve).pack(side="right")
+        ttk.Button(changes, text="Sustituir", command=self.replace).pack(side="left")
+        ttk.Button(changes, text="+ Antes", command=lambda: self.insert(False)).pack(side="left", padx=5)
+        ttk.Button(changes, text="+ Después", command=lambda: self.insert(True)).pack(side="left")
         footer = ttk.Frame(right)
         footer.pack(before=self.board, fill="x", pady=(0, 6))
-        ttk.Button(footer, text="Exportar PDF después de revisar", command=self.export).pack(side="right")
-        self.approval_label = self.tk.StringVar(value=f"0 de {len(self.paths)} páginas revisadas")
-        ttk.Label(footer, textvariable=self.approval_label).pack(side="left")
-        self.quality_label = self.tk.StringVar(value="Selecciona una miniatura para comprobar la imagen final.")
+        ttk.Button(footer, text="Exportar PDF", command=self.export).pack(side="right")
+        self.quality_label = self.tk.StringVar(value="")
         ttk.Label(right, textvariable=self.quality_label).pack(before=self.board, fill="x", pady=(0, 5))
         self._set_mode_controls()
-        self.status.set("Selecciona una hoja: verás el resultado final sin puntos y podrás ampliar su resolución real.")
+        self.status.set("")
         if self.paths:
             self.choose(0)
         self.window.after(100, self.poll_large)
@@ -117,13 +112,11 @@ class ReviewWorkspace(PhotoMatrix):
             self.preview_mode()
 
     def _page_caption(self, index):
-        return f"Página {index+1}" + (" ✓" if self.paths[index] in self.approved else "")
+        return f"Página {index+1}"
 
     def _edited(self):
         if self.selected is not None:
             self.dirty = True
-            self.approved.discard(self.paths[self.selected])
-            self._highlight_selection()
 
     def _press(self, event):
         if self.mode == "preview":
@@ -149,19 +142,19 @@ class ReviewWorkspace(PhotoMatrix):
             return
         detected = detectar_hoja(np.asarray(self.editor_image))
         if detected is None:
-            self.status.set("No se detectaron cuatro esquinas seguras. Ajusta los círculos manualmente.")
+            self.status.set("No se detectaron esquinas. Ajusta el recorte manualmente.")
             return
         scale = np.float32([self.full_size[0] / self.editor_image.width,
                             self.full_size[1] / self.editor_image.height])
         points = ordenar_esquinas(detected) * scale
         if self.points is not None and np.allclose(self.points, points, atol=2):
-            self.status.set("El detector encontró las mismas cuatro esquinas actuales. Puedes moverlas manualmente.")
+            self.status.set("El recorte automático no cambió.")
             return
         self.detected_points = points.copy()
         self.points = points.copy()
         self._draw_editor()
         self._edited()
-        self.status.set("Detección recalculada. Comprueba las esquinas y pulsa Guardar recorte y ver resultado.")
+        self.status.set("Recorte actualizado. Comprueba las esquinas.")
 
     def save(self):
         from tkinter import messagebox
@@ -178,9 +171,8 @@ class ReviewWorkspace(PhotoMatrix):
         self.saved_indices.add(self.selected)
         self.refresh_item(self.selected)
         self._highlight_selection()
-        page_number = self.selected + 1
         self.preview_mode()
-        self.status.set(f"Recorte guardado en página {page_number}. Ahora comprueba la nitidez y marca la página revisada.")
+        self.status.set("Recorte guardado.")
         return True
 
     def choose(self, index):
@@ -210,7 +202,7 @@ class ReviewWorkspace(PhotoMatrix):
             return
         self.mode = "edit"
         self._set_mode_controls()
-        self.status.set("Mueve los cuatro puntos y pulsa Guardar recorte y ver resultado.")
+        self.status.set("")
         self.big_token += 1
         if self.big_image is not None:
             self.big_image.close()
@@ -234,10 +226,9 @@ class ReviewWorkspace(PhotoMatrix):
         self.big_token += 1
         token, index = self.big_token, self.selected
         self.board.delete("all")
-        self.board.create_text(25, 25, text="Preparando vista a resolución real...", fill="white", anchor="nw")
-        self.quality_label.set("Calculando resolución final y vista equivalente al JPEG exportado...")
-        self.status.set("Vista final antes de exportar. Rueda: zoom, arrastra: mover, doble clic: encajar."
-                        + (" Recorte aún sin guardar." if self.dirty else ""))
+        self.board.create_text(25, 25, text="Cargando...", fill="white", anchor="nw")
+        self.quality_label.set("")
+        self.status.set("Recorte sin guardar" if self.dirty else "")
         def load():
             try:
                 im = final_export_preview(photo, auto_crop=self.auto_crop,
@@ -261,7 +252,7 @@ class ReviewWorkspace(PhotoMatrix):
                 continue
             if error:
                 self.status.set(f"No se pudo mostrar la calidad final: {error}")
-                self.quality_label.set("No se puede evaluar esta página. No la marques revisada.")
+                self.quality_label.set("")
             else:
                 if self.big_image is not None:
                     self.big_image.close()
@@ -373,13 +364,11 @@ class ReviewWorkspace(PhotoMatrix):
         index, old = self.selected, self.paths[self.selected]
         self.on_replace(index, path)
         self.paths[index] = path
-        self.approved.discard(old)
-        self.saved_indices.discard(index)
+replace approved        self.saved_indices.discard(index)
         self.dirty = False
         self.show(index//16*16)
         self.choose(index)
-        self._update_count()
-        self.status.set(f"Página {index+1} sustituida; revisa la nueva fotografía antes de aprobar")
+        self.status.set(f"Página {index+1} sustituida.")
 
     def insert(self, after):
         if self.selected is None or not self._pending():
@@ -394,37 +383,13 @@ class ReviewWorkspace(PhotoMatrix):
         self.dirty = False
         self.show(index//16*16)
         self.choose(index)
-        self._update_count()
-        self.status.set(f"Página {index+1} insertada sin reordenar las demás")
-
-    def _update_count(self):
-        self.approval_label.set(f"{len(self.approved)} de {len(self.paths)} páginas revisadas")
-
-    def approve(self):
-        from tkinter import messagebox
-        if self.selected is None:
-            return
-        if self.dirty and not self.save():
-            return
-        if self.mode != "preview" or self.big_image is None:
-            messagebox.showinfo("Revisar calidad", "Espera a ver la imagen final antes de marcarla revisada.",
-                                parent=self.window)
-            return
-        self.approved.add(self.paths[self.selected])
-        self._highlight_selection()
-        self._update_count()
-        self.status.set(f"✓ Página {self.selected+1} revisada. Esta marca no modifica la imagen; el recorte ya se guardó por separado.")
+        self.status.set(f"Página {index+1} insertada.")
 
     def export(self):
-        from tkinter import messagebox
-        if not self.paths or not self._pending():
-            return
-        missing = len(self.paths) - len(self.approved)
-        if missing and not messagebox.askyesno("Confirmar exportación",
-            f"Todavía hay {missing} hoja(s) sin marcar como aprobadas. ¿Exportar igualmente?",
-            parent=self.window):
-            return
-        self.on_export()
+        # La revisión visual de la matriz es voluntaria. Ninguna aprobación
+        # individual es necesaria para crear el PDF.
+        if self.paths and self._pending():
+            self.on_export()
 
     def close(self):
         self.big_token += 1
