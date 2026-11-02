@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## 1.11 (2026-11-01)
+
+- Corregido el desacuerdo entre el detector de esquinas de las miniaturas y el de la exportación.
+- Cálculo único y reutilizable de cuatro esquinas para matriz, vista de calidad y PDF.
+- Validación de perspectiva y estabilidad de bordes en dos escalas; si no es segura, se conserva la fotografía completa.
+- Advertencias ⚠ en la matriz para las páginas que necesitan inspección o recorte manual.
+- Pruebas de igualdad geométrica entre vista previa y PDF y de fallback ante una detección inestable.
+- Corrección adicional del indicador de progreso de exportación.
+
+
 ## 1.10 (2026-11-01)
 
 - Único nombre de archivo, definido por la persona en la aplicación. Al exportar, Windows solicita solamente la carpeta.
