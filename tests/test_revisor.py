@@ -297,6 +297,16 @@ class ReviewFlowTests(unittest.TestCase):
         panel._request_full_preview()
         panel.quick_pool.submit.assert_called_once()
 
+    def test_preparacion_se_oculta_al_terminar_lote(self):
+        from unittest.mock import Mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.detection_info = Mock()
+        panel.set_detection_progress(7, 100)
+        self.assertEqual(panel.detection_info.set.call_args.args[0], "Preparando esquinas: 7/100")
+        panel.set_detection_progress(100, 100)
+        self.assertEqual(panel.detection_info.set.call_args.args[0], "")
+
     def test_miniaturas_respetan_monitores_pequenos(self):
         from revisor_base import matrix_thumbnail_size
         small = matrix_thumbnail_size(800, 600)
