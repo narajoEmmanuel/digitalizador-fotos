@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## 1.14 (2026-11-01)
+
+- **Detectar**, primera pulsación: recalcular esquinas de la hoja actual.
+- **Optimizar**, desde la segunda pulsación: búsqueda local alrededor de los cuatro bordes, evaluando contraste papel/fondo y nitidez de cada lado.
+- Sin movimientos forzados cuando no hay mejora fiable; validación de convexidad, límites y cambio de área.
+- Optimización fuera del hilo de la interfaz, con estado visible y descarte de resultados de otra página si se navega durante el cálculo.
+- Solo **Guardar recorte** aplica la corrección al PDF; los resultados del detector por lote siguen intactos hasta guardar.
+- Pruebas con hojas sobre fondos de color, recortes ya correctos y ausencia de señal en bordes.
+
+
 ## 1.13 (2026-11-01)
 
 - Importación y EXIF en segundo plano con fechas de captura reutilizadas.
