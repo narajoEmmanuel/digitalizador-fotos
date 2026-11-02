@@ -30,6 +30,62 @@ class DigitalizadorTests(unittest.TestCase):
             exif[36881] = offset
         Image.new("RGB", (400, 550), color).save(path, exif=exif)
 
+    def test_editor_principal_comparte_editor_matriz_y_bloque(self):
+        from digitalizador import focus_review_page
+        from unittest.mock import Mock
+        review = Mock()
+        review.closed = False
+        review.paths = list(range(107))
+        review.selected = 0
+        review.start = 0
+        review.dirty = False
+        review.corners_enabled = False
+        def show(start):
+            review.start = start
+        def choose(index):
+            review.selected = index
+        review.show.side_effect = show
+        review.choose.side_effect = choose
+        result = focus_review_page(review, 19, edit_corners=True)
+        self.assertTrue(result)
+        self.assertTrue(review.corners_enabled)
+        review.show.assert_called_once_with(16)
+        review.choose.assert_called_once_with(19)
+        review.window.lift.assert_called_once()
+        review.window.focus_force.assert_called_once()
+
+    def test_editor_principal_no_descarta_ajustes_pendientes(self):
+        from digitalizador import focus_review_page
+        from unittest.mock import Mock
+        review = Mock()
+        review.closed = False
+        review.paths = list(range(107))
+        review.selected = 4
+        review.start = 0
+        review.dirty = True
+        review.corners_enabled = False
+        review._pending.return_value = False
+        self.assertFalse(focus_review_page(review, 22, edit_corners=True))
+        review._pending.assert_called_once()
+        self.assertFalse(review.corners_enabled)
+        review.show.assert_not_called()
+        review.choose.assert_not_called()
+
+    def test_editor_principal_reutiliza_matriz_existente(self):
+        from digitalizador import focus_review_page
+        from unittest.mock import Mock
+        review = Mock()
+        review.closed = False
+        review.paths = list(range(30))
+        review.selected = 3
+        review.start = 0
+        review.dirty = False
+        review.corners_enabled = True
+        review.choose.side_effect = lambda index: setattr(review, "selected", index)
+        self.assertTrue(focus_review_page(review, 5, edit_corners=True))
+        review.show.assert_not_called()
+        self.assertTrue(review.corners_enabled)
+
     def test_metadatos_exif_reutilizados(self):
         import digitalizador
         with tempfile.TemporaryDirectory() as d:

@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## 1.16.2 (2026-11-01)
+
+- El botón **Editar esquinas** de la pantalla principal abre la misma herramienta utilizada por la matriz, posicionada en la fotografía seleccionada.
+- Eliminado el editor emergente antiguo que detectaba la hoja sobre una miniatura diferente y solo restauraba esquinas antiguas.
+- Matriz, pantalla principal y PDF comparten detector automático, doble refinamiento, correcciones manuales y caché.
+- Si la matriz ya está abierta, se reutiliza la ventana y se navega directamente a la página elegida, incluso fuera de las primeras 16.
+- Se respetan los recortes sin guardar al cambiar de página y se conserva la prioridad de los recortes manuales.
+- Pruebas de navegación y apertura del editor único desde la pantalla principal.
+
+
 ## 1.16.1 (2026-11-01)
 
 - La detección automática analiza la imagen a 1600 px, igual que el editor, en lugar de 1050 px.

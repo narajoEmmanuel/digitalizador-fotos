@@ -91,6 +91,30 @@ def verify_pdf_export(path: Path, expected_pages: int) -> None:
 
 
 
+def focus_review_page(review, index: int, edit_corners: bool = False) -> bool:
+    """Enfoca una página en la única herramienta de revisión y recorte.
+
+    Se usa tanto desde la pantalla principal como desde la matriz. Respeta
+    los ajustes sin guardar y muestra el bloque de 16 correspondiente.
+    """
+    if review.closed or not 0 <= index < len(review.paths):
+        return False
+    if review.selected is not None and review.selected != index and review.dirty:
+        if not review._pending():
+            return False
+    if edit_corners:
+        review.corners_enabled = True
+    block = index // 16 * 16
+    if review.start != block:
+        review.show(block)
+    review.choose(index)
+    if review.selected != index:
+        return False
+    review.window.lift()
+    review.window.focus_force()
+    return True
+
+
 def capture_datetime(photo: Path) -> datetime:
     """Obtiene la fecha ORIGINAL de toma (EXIF DateTimeOriginal), no la del archivo.
 
@@ -565,7 +589,6 @@ def gui_main():
             self.detection_warnings = 0
             self.active_review = None
             self.page_position = tk.StringVar(value='Página 0 de 0')
-            self.crop_loading = False
             self.latest_pdf: Path | None = None
             self.export_review = None
             self.export_folder: Path | None = None
@@ -786,15 +809,24 @@ def gui_main():
             self.refresh_preview()
             return rotation
 
-        def open_matrix(self):
-            """Matriz, ajuste, zoom y sustituciones ANTES de exportar el PDF."""
+        def open_matrix(self, focus_index=None, edit_corners=False):
+            """Única herramienta para inspeccionar y editar esquinas.
+
+            El botón de la pantalla principal abre directamente la página
+            seleccionada en la misma matriz, con el mismo detector y recorte.
+            """
             if not self.paths or self.busy or self.import_loading:
                 return
-            from revisor import ReviewWorkspace
-            if self.active_review is not None and not self.active_review.closed:
-                self.active_review.window.lift()
-                self.active_review.window.focus_force()
+            review = self.active_review
+            if review is not None and not review.closed:
+                if focus_index is not None:
+                    focus_review_page(review, focus_index, edit_corners)
+                else:
+                    review.window.lift()
+                    review.window.focus_force()
                 return
+
+            from revisor import ReviewWorkspace
             manual = self.manual_corners
             auto = self.auto_crop.get()
 
@@ -807,14 +839,17 @@ def gui_main():
                     _, reason = automatic_page_corners(path)
                 return result, reason
 
-            self.active_review = ReviewWorkspace(
+            review = ReviewWorkspace(
                 self.root, self.paths, processed, self._matrix_save,
                 preview_image, manual, self._replace_review_photo,
                 self._insert_review_photo, self.make_pdf, auto_crop=auto,
                 pdf_name=self.pdf_name, rotations=self.rotations,
                 on_rotate=self._rotate_review_photo)
-            self.active_review.set_detection_progress(
+            self.active_review = review
+            review.set_detection_progress(
                 self.detection_done, self.detection_total)
+            if focus_index is not None:
+                focus_review_page(review, focus_index, edit_corners)
 
         def _matrix_save(self, index, corners):
             photo = self.paths[index]
@@ -938,135 +973,13 @@ def gui_main():
                     self._submit_preview(-1, key)
 
         def adjust_corners(self):
-            """Carga la foto para ajustar esquinas sin bloquear el hilo gráfico."""
-            if self.busy or not self.paths or self.crop_loading:
+            """Abrir esta hoja en el mismo editor de la matriz, sin detector duplicado."""
+            if self.busy or self.import_loading or not self.paths:
                 return
-            selected = self.listbox.curselection()
-            if not selected:
+            selection = self.listbox.curselection()
+            if not selection:
                 return
-            photo = self.paths[selected[0]]
-            self.crop_loading = True
-            self.manual_button.state(["disabled"])
-            self.preview_status.set(f"Abriendo ajuste de esquinas de {photo.name}...")
-            # Leer dimensiones de Tk solo desde el hilo gráfico.
-            screen_w = self.root.winfo_screenwidth()
-            screen_h = self.root.winfo_screenheight()
-            limit = max(280, min(840, screen_w - 150, screen_h - 245))
-
-            def worker():
-                try:
-                    # La lectura y el redimensionado de HEIC ocurren fuera de Tk.
-                    preview, size = preview_image(photo, limit)
-                    detection = find_document_corners(np.asarray(preview))
-                    self.events.put(('crop_ready', photo, preview, size, detection, None))
-                except Exception as exc:
-                    self.events.put(('crop_ready', photo, None, None, None, str(exc)))
-
-            self.preview_pool.submit(worker)
-
-        def show_crop_editor(self, photo, preview, full_size, detected_small):
-            """La interfaz Tk y su imagen se construyen únicamente en el hilo principal."""
-            w, h = full_size
-            screen_w = self.root.winfo_screenwidth()
-            screen_h = self.root.winfo_screenheight()
-            # Reserva espacio para encabezado, controles, barras de Windows
-            # y los cuatro tiradores, incluso con escalado de pantalla.
-            max_width = max(240, screen_w - 150)
-            max_height = max(240, screen_h - 245)
-            if preview.width > max_width or preview.height > max_height:
-                preview.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
-            width, height = preview.size
-            ratio_x, ratio_y = width / w, height / h
-            img = ImageTk.PhotoImage(preview)
-            detected = (detected_small / np.float32([ratio_x, ratio_y])
-                        if detected_small is not None else None)
-            preview.close()
-            initial = self.manual_corners.get(photo)
-            if initial is None:
-                initial = detected
-            if initial is None:
-                initial = np.float32([[w*.05, h*.05], [w*.95, h*.05],
-                                     [w*.95, h*.95], [w*.05, h*.95]])
-            points = (ordenar_esquinas(initial) * np.float32([ratio_x, ratio_y])).tolist()
-            popup = tk.Toplevel(self.root)
-            popup.title(f"Ajustar recorte: {photo.name}")
-            popup.transient(self.root)
-            popup.grab_set()
-            container = ttk.Frame(popup, padding=14)
-            container.pack(fill="both", expand=True)
-            ttk.Label(container, text="Arrastra los cuatro círculos a las esquinas de la hoja.",
-                      font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
-            padding = 14  # los tiradores no quedan cortados en bordes de foto
-            board = tk.Canvas(container, width=width + 2*padding,
-                              height=height + 2*padding, highlightthickness=0,
-                              borderwidth=0, cursor="crosshair", bg="#1B242C")
-            board.pack()
-            board.create_image(padding, padding, image=img, anchor="nw")
-            board.image_reference = img
-            poly = board.create_polygon(0, 0, 0, 0, outline="#16A6DB", fill="", width=3)
-            handles = [board.create_oval(0, 0, 0, 0, fill="#16A6DB", outline="white", width=2)
-                       for _ in range(4)]
-            labels = [board.create_text(0, 0, fill="white", text=str(i+1), font=("Segoe UI", 10, "bold"))
-                      for i in range(4)]
-            selected_handle = [None]
-
-            def redraw():
-                board.coords(poly, *[value + padding for xy in points for value in xy])
-                for i, (x, y) in enumerate(points):
-                    board.coords(handles[i], x+padding-11, y+padding-11,
-                                 x+padding+11, y+padding+11)
-                    board.coords(labels[i], x+padding, y+padding)
-
-            def near_handle(event):
-                distances = [np.hypot(x+padding-event.x, y+padding-event.y) for x, y in points]
-                closest = int(np.argmin(distances))
-                return closest if distances[closest] < 38 else None
-
-            def press(event):
-                selected_handle[0] = near_handle(event)
-
-            def drag(event):
-                i = selected_handle[0]
-                if i is not None:
-                    points[i] = [max(0, min(width-1, event.x-padding)),
-                                 max(0, min(height-1, event.y-padding))]
-                    redraw()
-
-            board.bind("<ButtonPress-1>", press)
-            board.bind("<B1-Motion>", drag)
-            board.bind("<ButtonRelease-1>", lambda _event: selected_handle.__setitem__(0, None))
-
-            def reset():
-                quad = detected if detected is not None else np.float32([
-                    [w*.05, h*.05], [w*.95, h*.05], [w*.95, h*.95], [w*.05, h*.95]])
-                points[:] = (ordenar_esquinas(quad) * np.float32([ratio_x, ratio_y])).tolist()
-                redraw()
-
-            def save():
-                quad = np.asarray(points, dtype=np.float32) / np.float32([ratio_x, ratio_y])
-                # Comprobar que no se cruzan las aristas ni se recorta una zona diminuta.
-                shape = quad.reshape(-1, 1, 2)
-                if not cv2.isContourConvex(shape) or cv2.contourArea(shape) < .07*w*h:
-                    messagebox.showwarning("Esquinas incorrectas", "Los puntos deben formar una hoja sin cruzarse.", parent=popup)
-                    return
-                self.manual_corners[photo] = quad
-                self.auto_crop.set(True)
-                popup.destroy()
-                self.refresh_preview()
-
-            redraw()
-            controls = ttk.Frame(container)
-            controls.pack(fill="x", pady=(11, 0))
-            ttk.Button(controls, text="Volver a detección automática", command=reset).pack(side="left")
-            ttk.Button(controls, text="Cancelar", command=popup.destroy).pack(side="right", padx=(7, 0))
-            ttk.Button(controls, text="Guardar recorte", command=save).pack(side="right")
-            popup.update_idletasks()
-            popup_w = min(popup.winfo_reqwidth(), screen_w - 30)
-            popup_h = min(popup.winfo_reqheight(), screen_h - 85)
-            x = max(0, (screen_w - popup_w)//2)
-            y = max(0, (screen_h - popup_h)//2 - 20)
-            popup.geometry(f"{popup_w}x{popup_h}+{x}+{y}")
-            popup.resizable(False, False)
+            self.open_matrix(focus_index=selection[0], edit_corners=True)
 
         @staticmethod
         def clean_name(value: str) -> str:
@@ -1178,15 +1091,6 @@ def gui_main():
                         review = self.active_review
                         if review is not None and not review.closed:
                             review.set_detection_progress(done, total)
-                elif event[0] == 'crop_ready':
-                    _, photo, preview, size, detection, failure = event
-                    self.crop_loading = False
-                    if not self.busy:
-                        self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
-                    if failure:
-                        messagebox.showerror("No se puede abrir", failure)
-                    else:
-                        self.show_crop_editor(photo, preview, size, detection)
                 elif event[0] == "progress":
                     _, n, total, name = event
                     self.progress.configure(value=n)
