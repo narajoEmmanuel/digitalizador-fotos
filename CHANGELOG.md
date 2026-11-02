@@ -6,6 +6,8 @@
 - Detección de esquinas inicial para todas las fotos, caché reutilizable y contador de progreso.
 - Caché de miniaturas y vistas procesadas (24 imágenes) para cambiar de página rápidamente.
 - Vista ligera inmediata; fotografía original a alta resolución solo al aplicar zoom.
+- Miniaturas de cada bloque procesadas en paralelo con dos trabajadores independientes de la imagen seleccionada.
+- Solicitudes simultáneas de detección de la misma fotografía comparten un único cálculo.
 - Tareas separadas para miniaturas, detalle e inspección inicial, y cancelación al cerrar.
 
 
