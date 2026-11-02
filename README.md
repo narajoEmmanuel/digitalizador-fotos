@@ -14,7 +14,7 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 
 - El lote de fotografías se importa y ordena por EXIF sin congelar la ventana.
 - Se calculan automáticamente las esquinas de **todas las fotografías**, no solo de las 16 visibles, mediante una tarea de fondo con progreso `Preparando esquinas: X/Y`.
-- La matriz y la vista de lectura comparten una caché limitada de 24 imágenes, y al seleccionar una miniatura aparece primero una vista ligera.
+- La matriz y la vista de lectura comparten una caché limitada de 24 imágenes. Dos trabajadores preparan las miniaturas en paralelo, sin bloquear la imagen seleccionada.
 - **Solo al ampliar** una hoja se carga el resultado final a alta resolución, con la misma compresión JPEG utilizada en el PDF.
 - Los giros y recortes manuales actualizan únicamente la página modificada.
 
