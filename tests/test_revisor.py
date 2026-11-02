@@ -286,6 +286,23 @@ class ReviewFlowTests(unittest.TestCase):
             self.assertLess(image.height, 490)
             image.close()
 
+    def test_progreso_y_etapas_de_exportacion_son_visibles(self):
+        from unittest.mock import Mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.export_progress = Mock()
+        panel.export_message = Mock()
+        panel.update_export_progress(20, 100, 80)
+        self.assertIn("20/100 páginas", panel.export_message.set.call_args.args[0])
+        self.assertIn("aprox.", panel.export_message.set.call_args.args[0])
+        panel.export_progress.configure.assert_any_call(value=19.0)
+        panel.update_export_stage("saving")
+        self.assertEqual(panel.export_message.set.call_args.args[0], "Guardando PDF...")
+        panel.export_progress.start.assert_called_with(12)
+        panel.update_export_stage("verifying")
+        self.assertEqual(panel.export_message.set.call_args.args[0],
+                         "Verificando páginas del PDF...")
+
     def test_confirmacion_exportacion_visible_y_abrir_pdf(self):
         from unittest.mock import Mock
         from revisor import ReviewWorkspace
