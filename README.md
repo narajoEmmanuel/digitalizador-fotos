@@ -44,7 +44,7 @@ Este aprendizaje es una **calibración por ejemplos locales**, no un modelo de i
 - **Sustituir:** cambia la fotografía seleccionada. **+ Antes** y **+ Después:** insertan una página en el lugar indicado.
 - **↶ 90° / 90° ↷:** giran únicamente la página seleccionada a izquierda o derecha. La miniatura, vista ampliada y PDF final respetan el giro. La fotografía original y las esquinas guardadas no cambian. Puedes pulsar dos veces para girar 180°, o deshacer girando al lado contrario.
 
-El contenido de la matriz se calcula a tamaño ligero. La vista individual de calidad procede de la fotografía original y utiliza la misma calidad JPEG 97, los mismos píxeles y el mismo submuestreo de color que el PDF. Durante la exportación, la barra muestra **X/Y páginas, porcentaje y tiempo restante aproximado**, calculado según el rendimiento real del lote. Después aparecen **Guardando PDF** y **Verificando páginas** con actividad visible; esas etapas no tienen tiempo restante fiable. Solo después de abrir y verificar el PDF aparece **✓ PDF guardado**, con nombre, ubicación, número de páginas y el botón **Abrir PDF**. Si hay un error, se informa de forma diferenciada. Nunca se sobrescribe automáticamente un PDF existente. La edición no modifica ni borra las fotos originales. Los cambios pendientes duran únicamente la sesión, así que exporta antes de cerrar la aplicación.
+El contenido de la matriz se calcula a tamaño ligero. La vista individual de calidad procede de la fotografía original y utiliza la misma calidad JPEG 97, los mismos píxeles y el mismo submuestreo de color que el PDF. Durante la exportación, verás **una barra fija debajo de los controles superiores y una ventana de progreso independiente**, tanto desde la pantalla principal como desde la matriz. La ventana muestra **X/Y páginas, porcentaje y tiempo restante aproximado**, calculado según el rendimiento real del lote; no queda oculta por las fotografías. Después aparecen **Guardando PDF** y **Verificando páginas** con actividad visible; esas etapas no tienen tiempo restante fiable. Solo después de abrir y verificar el PDF aparece **✓ PDF guardado**, con nombre, ubicación, número de páginas y el botón **Abrir PDF**. Si hay un error, se informa de forma diferenciada. Nunca se sobrescribe automáticamente un PDF existente. La edición no modifica ni borra las fotos originales. Los cambios pendientes duran únicamente la sesión, así que exporta antes de cerrar la aplicación.
 
 ### Exportación rápida sin pérdida de calidad
 
@@ -106,4 +106,4 @@ Uso opcional por consola:
 - `vistas.py`: utilidades de visualización.
 - `tests/`: pruebas automatizadas.
 
-**Versión actual: 1.19.**
+**Versión actual: 1.19.1.**
