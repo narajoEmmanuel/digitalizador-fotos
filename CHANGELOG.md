@@ -1,5 +1,16 @@
 # Historial de cambios
 
+## 1.18.2 (2026-11-02)
+
+- Restaurado el editor emergente original de la pantalla principal. **Editar esquinas** ya no abre la matriz.
+- Conservados el tamaño adaptado a pantalla, la imagen de fondo, los cuatro puntos arrastrables, **Volver a detección automática**, **Guardar recorte** y **Cancelar**.
+- Incorporado el botón **Optimizar** funcional en ese editor, que refina las esquinas actuales hasta dos veces a resolución de análisis de 1600 píxeles.
+- El cálculo se hace en segundo plano y actualiza las cuatro esquinas del editor sin guardar automáticamente.
+- Al guardar, el recorte se utiliza en las vistas y el PDF y se sincroniza con la matriz si está abierta.
+- Se mantienen la detección por lote y **Optimizar todas** en la pantalla principal, y la optimización individual dentro de la matriz.
+- Pruebas del cálculo del editor principal, rechazo de picos, ausencia de mejoras y recuperación de la interfaz independiente.
+
+
 ## 1.18.1 (2026-11-02)
 
 - Eliminado el interruptor **Recorte automático** de la pantalla principal. La aplicación utiliza siempre la detección automática al cargar fotografías, revisar y exportar.
