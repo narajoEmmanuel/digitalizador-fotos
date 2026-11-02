@@ -186,7 +186,7 @@ def apply_learning(image: np.ndarray, base_corners: np.ndarray,
         np.asarray(sample["adjustment"], dtype=np.float32) for _, sample in closest])
     adjustment = np.average(corrections, axis=0, weights=weights)
     # Conservador: tres cuartas partes de la corrección aprendida.
-    candidate = base + adjustment * np.float32([w, h]) * .75
+    candidate = (base + adjustment * np.float32([w, h]) * .75).astype(np.float32)
     if not _valid(candidate, w, h):
         return None
     old_area = abs(cv2.contourArea(base))
