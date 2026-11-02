@@ -12,8 +12,8 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 
 ### Matriz de revisión
 
-- **Izquierda:** 16 páginas por bloque, numeradas y con botones para avanzar o retroceder.
-- **Derecha:** vista del resultado procesado; no aparecen esquinas al seleccionar la página.
+- **Izquierda (36 %):** matriz de 16 páginas, navegación y **todos los botones** (recortar, detectar, sustituir, insertar, exportar y cerrar).
+- **Derecha (64 %):** solo la imagen procesada, sin barras ni controles que reduzcan el área de visualización. Al editar el recorte aparecen los cuatro puntos sobre la imagen.
 - **Rueda del mouse:** zoom alrededor del puntero. **Arrastrar:** mover la imagen ampliada. **Doble clic:** encajar la página.
 - La vista de calidad presenta las dimensiones finales en píxeles y el zoom. A **100 %**, un píxel de imagen corresponde a un píxel de pantalla.
 - **Editar recorte:** muestra las cuatro esquinas. **Detectar:** vuelve a calcular el contorno. **Guardar recorte:** almacena las esquinas y regresa a la imagen procesada.
