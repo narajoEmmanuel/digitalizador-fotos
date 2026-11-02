@@ -60,7 +60,7 @@ class ReviewFlowTests(unittest.TestCase):
             result.close()
             original.close()
 
-    def test_seleccion_por_defecto_es_preview(self):
+    def test_seleccion_por_defecto_es_preview_sin_leer_48mp(self):
         from unittest import mock
         from revisor import ReviewWorkspace
         from revisor_base import PhotoMatrix
@@ -68,15 +68,26 @@ class ReviewFlowTests(unittest.TestCase):
         panel = ReviewWorkspace.__new__(ReviewWorkspace)
         panel.selected = None
         panel.paths = [page]
+        panel.closed = False
+        panel.corners_enabled = False
         panel.dirty = False
         panel.mode = "edit"
         panel.big_token = 0
+        panel.selection_token = 0
         panel.big_image = None
         panel._set_mode_controls = mock.Mock()
-        with mock.patch.object(PhotoMatrix, "choose"):
+        panel._highlight_selection = mock.Mock()
+        panel._show_quick_preview = mock.Mock()
+        panel.current_label = mock.Mock()
+        panel.save_button = mock.Mock()
+        panel.reset_button = mock.Mock()
+        with mock.patch.object(PhotoMatrix, "choose") as heavyweight:
             panel.choose(0)
         self.assertEqual(panel.mode, "preview")
         panel._set_mode_controls.assert_called_once_with()
+        panel._show_quick_preview.assert_called_once_with()
+        heavyweight.assert_not_called()
+        self.assertEqual(panel.selected, 0)
 
     def test_modo_esquinas_persiste_entre_hojas(self):
         from unittest import mock
@@ -239,6 +250,50 @@ class ReviewFlowTests(unittest.TestCase):
         panel.refresh_item.assert_called_once_with(0)
         panel.preview_mode.assert_called_once()
         self.assertFalse(panel.corners_enabled)
+
+    def test_cache_compartida_evitar_decodificar_varias_veces(self):
+        from collections import OrderedDict
+        from threading import Lock
+        from unittest.mock import Mock
+        from revisor_base import PhotoMatrix
+        cache = PhotoMatrix.__new__(PhotoMatrix)
+        cache.closed = False
+        cache.quick_lock = Lock()
+        cache.quick_cache = OrderedDict()
+        cache.preview_provider = Mock(side_effect=lambda _photo: (
+            Image.new("RGB", (400, 600), "beige"), None))
+        key = Path("foto.jpg")
+        first, _ = cache.get_quick_preview(key)
+        second, _ = cache.get_quick_preview(key)
+        self.assertEqual(cache.preview_provider.call_count, 1)
+        self.assertEqual(first.size, (400, 600))
+        self.assertIsNot(first, second)
+        cache.discard_quick_preview(key)
+        self.assertNotIn(key, cache.quick_cache)
+        first.close()
+        second.close()
+
+    def test_zoom_carga_calidad_final_solo_si_se_pide(self):
+        from unittest.mock import Mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.closed = False
+        panel.selected = 0
+        panel.mode = "preview"
+        panel.big_token = 5
+        panel.full_preview = False
+        panel.full_pending_token = None
+        panel.paths = [Path("foto.jpg")]
+        panel.manual_corners = {}
+        panel.rotations = {}
+        panel.auto_crop = False
+        panel.quick_pool = Mock()
+        panel.quality_label = Mock()
+        panel._request_full_preview()
+        self.assertEqual(panel.full_pending_token, 5)
+        panel.quick_pool.submit.assert_called_once()
+        panel._request_full_preview()
+        panel.quick_pool.submit.assert_called_once()
 
     def test_miniaturas_respetan_monitores_pequenos(self):
         from revisor_base import matrix_thumbnail_size
