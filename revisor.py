@@ -198,7 +198,8 @@ class ReviewWorkspace(PhotoMatrix):
             self.preview_mode()
 
     def _page_caption(self, index):
-        return f"Página {index+1}"
+        warning = self.crop_warnings.get(self.paths[index])
+        return f"⚠ Página {index+1}" if warning else f"Página {index+1}"
 
     def _edited(self):
         if self.selected is not None:
@@ -317,7 +318,9 @@ class ReviewWorkspace(PhotoMatrix):
         self.board.delete("all")
         self.board.create_text(25, 25, text="Cargando...", fill="white", anchor="nw")
         self.quality_label.set("")
-        self.status.set("Recorte sin guardar" if self.dirty else "")
+        warning = self.crop_warnings.get(photo) if photo not in self.manual_corners else None
+        self.status.set("Recorte sin guardar" if self.dirty else
+                        f"⚠ {warning}. Comprueba el recorte." if warning else "")
         def load():
             try:
                 im = final_export_preview(photo,
