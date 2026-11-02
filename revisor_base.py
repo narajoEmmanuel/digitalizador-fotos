@@ -52,7 +52,8 @@ class PhotoMatrix:
             except tk.TclError:
                 pass
         self.window.protocol('WM_DELETE_WINDOW', self.close)
-        self.pool = ThreadPoolExecutor(max_workers=3)
+        self.pool = ThreadPoolExecutor(max_workers=2)
+        self.thumb_pool = ThreadPoolExecutor(max_workers=2)
         self.quick_pool = ThreadPoolExecutor(max_workers=2)
         self.quick_lock = Lock()
         self.quick_cache = OrderedDict()
@@ -155,12 +156,8 @@ class PhotoMatrix:
         for i in range(4):
             self.grid.columnconfigure(i, weight=1, uniform='photos')
             self.grid.rowconfigure(i, weight=1, uniform='photos')
-        def worker():
-            for i,path in batch:
-                if self.closed or gen != self.generation:
-                    return
-                self._thumb(gen,i,path,self.thumb_versions[i])
-        self.pool.submit(worker)
+        for i, path in batch:
+            self.thumb_pool.submit(self._thumb, gen, i, path, self.thumb_versions[i])
         self._highlight_selection()
 
     def _page_caption(self,index):
@@ -196,6 +193,8 @@ class PhotoMatrix:
                 old[0].close()
 
     def _thumb(self, gen, index, path, version):
+        if self.closed or gen != self.generation:
+            return
         try:
             im, warning = self.get_quick_preview(path)
             im.thumbnail(self.thumb_size, Image.Resampling.BILINEAR)
@@ -208,7 +207,7 @@ class PhotoMatrix:
             return
         self.discard_quick_preview(self.paths[index])
         self.thumb_versions[index] = self.thumb_versions.get(index,0)+1
-        self.pool.submit(self._thumb,self.generation,index,self.paths[index],self.thumb_versions[index])
+        self.thumb_pool.submit(self._thumb,self.generation,index,self.paths[index],self.thumb_versions[index])
 
     def _highlight_selection(self):
         for i,(button,caption) in self.buttons.items():
@@ -376,6 +375,7 @@ class PhotoMatrix:
         if self.resize_after is not None:
             self.window.after_cancel(self.resize_after)
         self.pool.shutdown(wait=False,cancel_futures=True)
+        self.thumb_pool.shutdown(wait=False,cancel_futures=True)
         self.quick_pool.shutdown(wait=False,cancel_futures=True)
         with self.quick_lock:
             for image, _warning in self.quick_cache.values():
