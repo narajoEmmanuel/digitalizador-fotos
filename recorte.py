@@ -262,6 +262,7 @@ def refinar_esquinas(rgb: np.ndarray, current: np.ndarray) -> np.ndarray | None:
     center = points.mean(axis=0)
     sides = []
     improved = False
+    improved_sides = 0
     for i in range(4):
         p, q = points[i], points[(i+1) % 4]
         normal = center - (p+q)/2
@@ -301,6 +302,7 @@ def refinar_esquinas(rgb: np.ndarray, current: np.ndarray) -> np.ndarray | None:
             best = (0., 0.)
         if max(abs(best[0]), abs(best[1])) > 1.5:
             improved = True
+            improved_sides += 1
         sides.append((p + best[0]*normal, q + best[1]*normal))
 
     if not improved:
@@ -320,7 +322,12 @@ def refinar_esquinas(rgb: np.ndarray, current: np.ndarray) -> np.ndarray | None:
     if not cv2.isContourConvex(refined.reshape(-1, 1, 2)):
         return None
     new_valid, new_area = _validar(refined, w, h)
-    if not new_valid or abs(new_area/original_area-1) > .30:
+    area_change = abs(new_area/original_area-1)
+    if not new_valid or area_change > .42:
+        return None
+    # Aceptar correcciones grandes solo si tres o cuatro lados respaldan
+    # el cambio, para no estirar una hoja por una línea de contenido interna.
+    if area_change > .20 and improved_sides < 3:
         return None
     # Sin puntas agudas: bajo perspectiva es un cuadrilátero, no un polígono libre.
     for i in range(4):
