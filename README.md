@@ -31,7 +31,16 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 - **Sustituir:** cambia la fotografía seleccionada. **+ Antes** y **+ Después:** insertan una página en el lugar indicado.
 - **↶ 90° / 90° ↷:** giran únicamente la página seleccionada a izquierda o derecha. La miniatura, vista ampliada y PDF final respetan el giro. La fotografía original y las esquinas guardadas no cambian. Puedes pulsar dos veces para girar 180°, o deshacer girando al lado contrario.
 
-El contenido de la matriz se calcula a tamaño ligero. La vista individual de calidad procede de la fotografía original y reproduce la compresión JPEG que se integrará en el PDF. Durante la exportación aparece una barra de progreso bajo **Exportar PDF**. Tras validar el archivo aparece **✓ PDF guardado**, con nombre, ubicación y número de páginas, y el botón **Abrir PDF**. Los avisos de error se distinguen claramente. Nunca se sobrescribe automáticamente un PDF existente. La edición no modifica ni borra las fotos originales. Los cambios pendientes duran únicamente la sesión, así que exporta antes de cerrar la aplicación.
+El contenido de la matriz se calcula a tamaño ligero. La vista individual de calidad procede de la fotografía original y utiliza la misma calidad JPEG 97, los mismos píxeles y el mismo submuestreo de color que el PDF. Durante la exportación, la barra muestra **X/Y páginas, porcentaje y tiempo restante aproximado**, calculado según el rendimiento real del lote. Después aparecen **Guardando PDF** y **Verificando páginas** con actividad visible; esas etapas no tienen tiempo restante fiable. Solo después de abrir y verificar el PDF aparece **✓ PDF guardado**, con nombre, ubicación, número de páginas y el botón **Abrir PDF**. Si hay un error, se informa de forma diferenciada. Nunca se sobrescribe automáticamente un PDF existente. La edición no modifica ni borra las fotos originales. Los cambios pendientes duran únicamente la sesión, así que exporta antes de cerrar la aplicación.
+
+### Exportación rápida sin pérdida de calidad
+
+- Se mantienen **la resolución, los recortes y giros, la conversión sRGB, JPEG 97 y el submuestreo de color 4:4:4**.
+- La codificación JPEG ya no usa búsqueda adicional de tablas Huffman. Esto puede aumentar un poco el tamaño del PDF, pero mantiene exactamente los mismos píxeles al decodificar el JPEG.
+- Los JPEG se incorporan directamente desde memoria, sin escribir y volver a leer una fotografía temporal por cada página.
+- La detección de esquinas en segundo plano se pausa mientras se exporta, priorizando la CPU para finalizar el archivo.
+- El tiempo restante es **una estimación**, no una promesa. Cuando termina el procesamiento de fotos aún quedan el guardado y la comprobación de integridad, mostrados explícitamente.
+- El PDF se verifica antes de publicarlo con su nombre definitivo y las imágenes originales nunca se borran ni sobrescriben.
 
 ### Corregir un PDF ya existente
 
@@ -84,4 +93,4 @@ Uso opcional por consola:
 - `vistas.py`: utilidades de visualización.
 - `tests/`: pruebas automatizadas.
 
-**Versión actual: 1.16.2.**
+**Versión actual: 1.17.**
