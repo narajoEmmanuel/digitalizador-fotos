@@ -334,6 +334,7 @@ def gui_main():
             self.preview_pool = ThreadPoolExecutor(max_workers=2)
             self.page_position = tk.StringVar(value='Página 0 de 0')
             self.crop_loading = False
+            self.latest_pdf: Path | None = None
 
             style = ttk.Style(root)
             if "clam" in style.theme_names():
@@ -373,6 +374,16 @@ def gui_main():
             self.manual_button = ttk.Button(crop_row, text="Ajustar esquinas de esta hoja", style="Small.TButton", command=self.adjust_corners)
             self.manual_button.pack(side="right")
             self.manual_button.state(["disabled"])
+            review_bar = ttk.Frame(body)
+            review_bar.pack(fill="x", pady=(3, 9))
+            self.matrix_btn = ttk.Button(review_bar, text="Ver recortes en matriz (16)",
+                                         command=self.open_matrix)
+            self.matrix_btn.pack(side="left")
+            self.matrix_btn.state(["disabled"])
+            ttk.Button(review_bar, text="Ver PDF en matriz / corregir páginas",
+                       command=self.open_pdf_matrix).pack(side="left", padx=(9, 0))
+            ttk.Button(review_bar, text="Vista final ampliada del PDF",
+                       command=self.open_pdf_zoom).pack(side="right")
             ttk.Label(body, text="El programa elimina el fondo cuando identifica la hoja. Puedes ajustar sus cuatro esquinas si es necesario.",
                       foreground="#667085").pack(anchor="w", pady=(0, 10))
 
@@ -447,6 +458,7 @@ def gui_main():
             )
             self.make_button.state(["!disabled"] if self.paths else ["disabled"])
             self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
+            self.matrix_btn.state(["!disabled"] if self.paths else ["disabled"])
             if self.paths:
                 self.listbox.selection_set(0)
                 self.refresh_preview()
@@ -458,6 +470,51 @@ def gui_main():
         def edit_existing_pdf(self):
             from editor_pdf import open_editor
             open_editor(self.root)
+
+        def open_matrix(self):
+            """Compara los recortes calculados antes de crear el PDF; clic abre ajuste manual."""
+            if not self.paths or self.busy:
+                return
+            from vistas import PhotoMatrix
+            auto = self.auto_crop.get()
+            manual = {k: v.copy() for k, v in self.manual_corners.items()}
+            def processed(path):
+                orig, result, _ = preview_pair(path, auto, manual.get(path))
+                orig.close()
+                return result
+            PhotoMatrix(self.root, self.paths, processed, self._matrix_edit)
+
+        def _matrix_edit(self, index):
+            self.listbox.selection_clear(0, "end")
+            self.listbox.selection_set(index)
+            self.listbox.activate(index)
+            self.listbox.see(index)
+            self.refresh_preview()
+            self.adjust_corners()
+
+        def open_pdf_matrix(self):
+            from editor_pdf import PdfEditorWindow, open_editor
+            if self.latest_pdf and self.latest_pdf.is_file():
+                PdfEditorWindow(self.root, self.latest_pdf).open_overview()
+            else:
+                editor = open_editor(self.root)
+                if editor:
+                    editor.open_overview()
+
+        def open_pdf_zoom(self):
+            from tkinter import filedialog, messagebox
+            from vistas import PdfZoomViewer
+            path = self.latest_pdf
+            if path is None or not path.exists():
+                chosen = filedialog.askopenfilename(parent=self.root, title="Elegir PDF para revisión final",
+                    filetypes=[("Documento PDF", "*.pdf")])
+                if not chosen:
+                    return
+                path = Path(chosen)
+            try:
+                PdfZoomViewer(self.root, path)
+            except Exception as exc:
+                messagebox.showerror("Vista final", str(exc), parent=self.root)
 
         def next_photo(self, step):
             if not self.paths:
@@ -707,6 +764,7 @@ def gui_main():
             self.folder_button.state(["disabled"])
             self.make_button.state(["disabled"])
             self.manual_button.state(["disabled"])
+            self.matrix_btn.state(["disabled"])
             self.name_entry.state(["disabled"])
             self.progress.configure(maximum=len(self.paths), value=0)
             self.progress_text.set(f"Preparando {len(self.paths)} páginas...")
@@ -763,6 +821,7 @@ def gui_main():
                     self.progress_text.set(f"Procesando {n} de {total}: {name}")
                 elif event[0] == "done":
                     info = event[1]
+                    self.latest_pdf = Path(info['file'])
                     self.reset_controls()
                     details = f"PDF creado con {info['pages']} páginas.\n\n{info['file']}"
                     if info["uncropped"]:
@@ -782,6 +841,7 @@ def gui_main():
             self.folder_button.state(["!disabled"])
             self.make_button.state(["!disabled"] if self.paths else ["disabled"])
             self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
+            self.matrix_btn.state(["!disabled"] if self.paths else ["disabled"])
             self.name_entry.state(["!disabled"])
 
     root = tk.Tk()
