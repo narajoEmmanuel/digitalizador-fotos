@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## 1.15 (2026-11-01)
+
+- Incorporada la muestra real de papel beige, mediana RGB (209, 201, 183), como referencia cromática en LAB.
+- Segmentación relativa al fondo de cada fotografía, con tolerancia a diferencias de iluminación.
+- Priorización de cuadriláteros convexos: cuatro bordes rectos, ángulos razonables, área coherente y contorno sin puntas.
+- Eliminados falsos rectángulos aproximados a partir de contornos demasiado irregulares.
+- Se conserva un detector general como respaldo y se evita recortar si no hay señales suficientemente confiables.
+- Pruebas con papel beige, papel más claro, fondos coloreados y estampados, perforaciones y geometrías con picos.
+
+
 ## 1.14 (2026-11-01)
 
 - **Detectar**, primera pulsación: recalcular esquinas de la hoja actual.
