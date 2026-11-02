@@ -350,6 +350,41 @@ class DigitalizadorTests(unittest.TestCase):
         self.assertGreater(np.min(detected[:, 0]), 60)
         self.assertLess(np.max(detected[:, 0]), w - 60)
 
+    def test_rectangulo_en_perspectiva_es_valido_pero_pico_brusco_no(self):
+        import digitalizador
+        from recorte import geometria_hoja_valida, _validar
+        normal = np.float32([[90, 80], [530, 115], [560, 705], [70, 725]])
+        peak = np.float32([[300, 50], [440, 400], [300, 750], [160, 400]])
+        self.assertTrue(geometria_hoja_valida(normal))
+        self.assertTrue(digitalizador.safe_auto_geometry(normal, 600, 800))
+        self.assertTrue(_validar(normal, 600, 800)[0])
+        # Figura grande y convexa, pero con vértices demasiado agudos
+        # para ser el contorno de una hoja fotografiada razonablemente.
+        self.assertFalse(geometria_hoja_valida(peak))
+        self.assertFalse(digitalizador.safe_auto_geometry(peak, 600, 800))
+        self.assertFalse(_validar(peak, 600, 800)[0])
+
+    def test_optimizacion_rechaza_nuevos_picos_sin_perder_esquinas(self):
+        import digitalizador
+        old = np.float32([[90, 80], [530, 115], [560, 705], [70, 725]])
+        pointed = np.float32([[300, 50], [440, 400], [300, 750], [160, 400]])
+        frame = np.zeros((800, 600, 3), np.uint8)
+        with mock.patch("digitalizador.refinar_esquinas", return_value=pointed) as optimizer:
+            result = digitalizador.refine_automatic_corners(frame, old, max_passes=2)
+        np.testing.assert_array_equal(result, old)
+        optimizer.assert_called_once()
+
+    def test_interfaz_siempre_recorta_sin_casilla(self):
+        import inspect
+        import digitalizador
+        gui = inspect.getsource(digitalizador.gui_main)
+        self.assertNotIn("self.crop_check", gui)
+        self.assertNotIn("self.auto_crop.get()", gui)
+        self.assertNotIn("Recorte automático\", variable=", gui)
+        self.assertIn("should_crop = True", gui)
+        self.assertIn("auto_crop=True", gui)
+        self.assertIn("self.optimize_all_button", gui)
+
     def test_segunda_busqueda_refina_esquinas_desviadas(self):
         import cv2
         from recorte import refinar_esquinas
