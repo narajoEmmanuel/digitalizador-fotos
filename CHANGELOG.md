@@ -1,5 +1,16 @@
 # Historial de cambios
 
+## 1.7 (2026-11-01)
+
+- Seleccionar una miniatura abre el resultado final sin superponer esquinas.
+- La vista se genera desde la fotografía original y replica incluso la codificación JPEG del PDF final.
+- Indicador de resolución real en píxeles y zoom 100 %, rueda centrada en el puntero, arrastre y doble clic para encajar.
+- **Editar esquinas** muestra los puntos únicamente cuando se solicita.
+- **Detectar hoja de nuevo** avisa si no encuentra esquinas o si no cambian.
+- **Guardar recorte y ver resultado** regresa automáticamente a la imagen procesada.
+- **Marcar página revisada** queda separado del guardado de recorte.
+
+
 ## 1.6 (2026-11-01)
 
 - Matriz maximizada con 16 miniaturas a la izquierda y editor continuo de esquinas a la derecha.

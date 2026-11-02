@@ -38,6 +38,64 @@ class ReviewFlowTests(unittest.TestCase):
             self.assertGreater(colors[2][2], colors[2][0])
             self.assertEqual(original, [p.read_bytes() for p in photos])
 
+    def test_vista_final_corresponde_al_jpeg_exportado(self):
+        """Inspeccionar a 100% equivale a inspeccionar los píxeles exportados."""
+        from io import BytesIO
+        import numpy as np
+        from digitalizador import prepare_page
+        from revisor import final_export_preview, resolution_info
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "hoja.jpg"
+            photo = Image.new("RGB", (320, 450), (50, 120, 170))
+            photo.save(path, quality=96)
+            result = final_export_preview(path, auto_crop=False)
+            original, _ = prepare_page(path, auto_crop=False)
+            with BytesIO() as buffer:
+                original.save(buffer, "JPEG", quality=97, subsampling=0, optimize=True)
+                buffer.seek(0)
+                with Image.open(buffer) as jpeg_image:
+                    np.testing.assert_array_equal(np.asarray(result), np.asarray(jpeg_image.convert("RGB")))
+            self.assertIn("320 × 450", resolution_info(result, 1.0))
+            self.assertIn("100 %", resolution_info(result, 1.0))
+            result.close()
+            original.close()
+
+    def test_seleccion_por_defecto_es_preview(self):
+        from unittest import mock
+        from revisor import ReviewWorkspace
+        from revisor_base import PhotoMatrix
+        page = Path("hoja.jpg")
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.selected = None
+        panel.paths = [page]
+        panel.dirty = False
+        panel.mode = "edit"
+        panel.big_token = 0
+        panel.big_image = None
+        panel._set_mode_controls = mock.Mock()
+        with mock.patch.object(PhotoMatrix, "choose"):
+            panel.choose(0)
+        self.assertEqual(panel.mode, "preview")
+        panel._set_mode_controls.assert_called_once_with()
+
+    def test_deteccion_insegura_no_mueve_las_esquinas(self):
+        from unittest import mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.mode = "edit"
+        panel.editor_image = Image.new("RGB", (100, 130), "gray")
+        panel.full_size = (100, 130)
+        panel.points = np.float32([[10, 10], [90, 10], [90, 120], [10, 120]])
+        original = panel.points.copy()
+        panel.status = mock.Mock()
+        panel._edited = mock.Mock()
+        with mock.patch("revisor.detectar_hoja", return_value=None):
+            panel.reset()
+        np.testing.assert_array_equal(panel.points, original)
+        self.assertIn("No se detectaron", panel.status.set.call_args.args[0])
+        panel._edited.assert_not_called()
+        panel.editor_image.close()
+
     def test_no_permite_esquinas_cruzadas(self):
         with self.assertRaises(ValueError):
             validated_photo_corners(

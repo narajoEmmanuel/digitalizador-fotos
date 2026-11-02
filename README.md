@@ -1,5 +1,14 @@
 # Digitalizador de Fotos
 
+## Vista de calidad final antes de exportar (v1.7)
+
+Selecciona una miniatura y **verás directamente la hoja procesada, sin puntos de recorte**. La imagen se procesa desde la foto original a resolución completa, aplicando el mismo recorte, dimensiones máximas y compresión JPEG (calidad 97, submuestreo 0) que usa la exportación PDF. El indicador muestra las dimensiones finales en píxeles y el zoom actual. **Zoom al 100 %** significa un píxel de la fotografía final por píxel de pantalla, para comprobar nitidez real; acercar más no recupera detalle. La rueda hace zoom alrededor del puntero, puedes arrastrar para moverte y hacer doble clic para encajar la hoja.
+
+Si una hoja está mal recortada, selecciona **Editar esquinas**; solo entonces verás los cuatro puntos. **Detectar hoja de nuevo** recalcula los puntos y avisa cuando no encuentra una hoja segura o el resultado no cambia. **Guardar recorte y ver resultado** almacena las esquinas, actualiza la miniatura y regresa automáticamente a la vista final. **Marcar página revisada ✓** solamente añade una marca visual de que comprobaste la resolución y legibilidad, sin modificar los píxeles. Antes de exportar se avisa de las páginas que sigan sin revisar.
+
+La vista final se obtiene a partir del mismo procesamiento de alta resolución que el PDF, no de una miniatura. El lector PDF puede mostrar pequeños cambios de interpretación de color según el software. La calidad de la fotografía original y el recorte siguen siendo el límite real; una foto desenfocada debe sustituirse antes de exportar.
+
+
 ## Revisión completa antes de exportar (v1.6)
 
 Elige primero una carpeta con fotografías del iPhone. La importación inicial las ordena por **hora original EXIF**. Después pulsa **Ver recortes en matriz (16)**:
