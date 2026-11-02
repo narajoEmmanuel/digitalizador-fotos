@@ -230,7 +230,7 @@ class ReviewFlowTests(unittest.TestCase):
             panel.reset()
             panel.poll_large()
         np.testing.assert_array_equal(panel.points, original)
-        self.assertIn("Sin mejora fiable", panel.status.set.call_args.args[0])
+        self.assertIn("No encontré otro borde más fiable", panel.status.set.call_args.args[0])
         panel._edited.assert_not_called()
         panel.editor_image.close()
 
