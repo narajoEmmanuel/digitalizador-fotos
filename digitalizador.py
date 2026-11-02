@@ -97,6 +97,13 @@ def capture_datetime(photo: Path) -> datetime:
     No se usan nombres, fechas de descarga ni modificaciones de OneDrive.
     El offset horario y fracciones de segundo se conservan cuando existen.
     """
+    photo = Path(photo)
+    stat = photo.stat()
+    return _capture_datetime_cached(photo, stat.st_mtime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=8192)
+def _capture_datetime_cached(photo: Path, modified_ns: int, size_bytes: int) -> datetime:
     try:
         with Image.open(photo) as image:
             exif = image.getexif()
@@ -493,6 +500,9 @@ def gui_main():
             self.preview_after = None
             self.preview_pool = ThreadPoolExecutor(max_workers=2)
             self.detection_pool = ThreadPoolExecutor(max_workers=1)
+            self.import_pool = ThreadPoolExecutor(max_workers=1)
+            self.import_generation = 0
+            self.import_loading = False
             self.detection_generation = 0
             self.detection_done = 0
             self.detection_total = 0
@@ -589,18 +599,30 @@ def gui_main():
             self.progress = ttk.Progressbar(footer, mode="determinate", maximum=100)
             self.progress.pack(fill="x")
             ttk.Label(footer, textvariable=self.progress_text).pack(anchor="w", pady=(6, 0))
+            root.protocol("WM_DELETE_WINDOW", self._on_close)
             root.after(100, self.poll_events)
 
         def pick_folder(self):
+            if self.busy or self.import_loading:
+                return
             folder = filedialog.askdirectory(title="Selecciona la carpeta con fotografías")
             if not folder:
                 return
-            chosen_folder = Path(folder)
-            try:
-                chosen_paths = discover_images(chosen_folder)
-            except ValueError as exc:
-                messagebox.showerror("Metadatos de captura", str(exc))
-                return
+            self.import_loading = True
+            self.folder_button.state(["disabled"])
+            self.import_generation += 1
+            generation = self.import_generation
+            selected_folder = Path(folder)
+            self.progress_text.set("Cargando fotografías...")
+            def worker():
+                try:
+                    paths = discover_images(selected_folder)
+                    self.events.put(("folder_loaded", generation, selected_folder, paths, None))
+                except Exception as exc:
+                    self.events.put(("folder_loaded", generation, selected_folder, None, str(exc)))
+            self.import_pool.submit(worker)
+
+        def _apply_folder(self, chosen_folder, chosen_paths):
             self.folder = chosen_folder
             self.paths = chosen_paths
             self.detection_generation += 1
@@ -710,7 +732,7 @@ def gui_main():
 
         def open_matrix(self):
             """Matriz, ajuste, zoom y sustituciones ANTES de exportar el PDF."""
-            if not self.paths or self.busy:
+            if not self.paths or self.busy or self.import_loading:
                 return
             from revisor import ReviewWorkspace
             if self.active_review is not None and not self.active_review.closed:
@@ -995,7 +1017,7 @@ def gui_main():
             return normalized_pdf_name(value)
 
         def make_pdf(self, review=None):
-            if not self.folder or not self.paths or self.busy:
+            if not self.folder or not self.paths or self.busy or self.import_loading:
                 return
             dialog_parent = (review.window if review is not None and not review.closed
                              else self.root)
@@ -1058,7 +1080,18 @@ def gui_main():
                     event = self.events.get_nowait()
                 except queue.Empty:
                     break
-                if event[0] == 'preview':
+                if event[0] == "folder_loaded":
+                    _, generation, chosen_folder, chosen_paths, error = event
+                    if generation != self.import_generation:
+                        continue
+                    self.import_loading = False
+                    self.folder_button.state(["!disabled"])
+                    if error:
+                        self.progress_text.set("No se pudo cargar la carpeta.")
+                        messagebox.showerror("Fotografías", error, parent=self.root)
+                    else:
+                        self._apply_folder(chosen_folder, chosen_paths)
+                elif event[0] == 'preview':
                     _, token, key, result, failure = event
                     self.preview_pending.discard(key)
                     if result is not None:
@@ -1136,6 +1169,16 @@ def gui_main():
                     self.export_review = None
                     messagebox.showerror("Error al generar PDF", event[1], parent=dialog_parent)
             self.root.after(100, self.poll_events)
+
+        def _on_close(self):
+            self.import_generation += 1
+            self.detection_generation += 1
+            if self.active_review is not None and not self.active_review.closed:
+                self.active_review.close()
+            self.import_pool.shutdown(wait=False, cancel_futures=True)
+            self.detection_pool.shutdown(wait=False, cancel_futures=True)
+            self.preview_pool.shutdown(wait=False, cancel_futures=True)
+            self.root.destroy()
 
         def reset_controls(self):
             self.busy = False
