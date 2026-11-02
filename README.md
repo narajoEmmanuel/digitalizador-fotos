@@ -84,4 +84,4 @@ Uso opcional por consola:
 - `vistas.py`: utilidades de visualización.
 - `tests/`: pruebas automatizadas.
 
-**Versión actual: 1.15.1 (detector restaurado de v1.14).**
+**Versión actual: 1.15.2 (detector anterior restaurado, con optimización amplia de esquinas).**
