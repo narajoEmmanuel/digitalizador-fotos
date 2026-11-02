@@ -98,6 +98,7 @@ class ReviewWorkspace(PhotoMatrix):
             messagebox.showwarning("No se pudo guardar", str(exc), parent=self.window)
             return False
         self.dirty = False
+        self.auto_crop = True
         self.saved_indices.add(self.selected)
         self.refresh_item(self.selected)
         self._highlight_selection()
