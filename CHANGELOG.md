@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## 1.6 (2026-11-01)
+
+- Matriz maximizada con 16 miniaturas a la izquierda y editor continuo de esquinas a la derecha.
+- Vista previa ampliada desde la imagen original, antes de crear el PDF, con zoom y desplazamiento.
+- Sustituir e insertar imágenes en cualquier posición durante la revisión sin requerir EXIF de la foto nueva.
+- El orden EXIF se conserva solo como orden inicial, los cambios manuales no se reordenan al exportar.
+- Marcado de páginas aprobadas y advertencia al exportar con páginas pendientes.
+- Pruebas para preservar el orden manual y proteger los originales.
+
+
 ## 1.5 (2026-11-01)
 
 - Matriz rápida de 16 recortes previstos antes de crear el PDF, con navegación por bloques.
