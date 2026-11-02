@@ -7,7 +7,7 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 1. Abre `INICIAR.bat` y elige una carpeta con fotografías.
 2. Escribe el nombre del PDF.
 3. Pulsa **Revisar en matriz** para ver 16 páginas por bloque.
-4. Revisa rápidamente todas las miniaturas. Selecciona solo las páginas dudosas para ver el resultado a resolución final, ampliar o corregir.
+4. Revisa las miniaturas de un vistazo. Selecciona una hoja para verla rápidamente y haz zoom únicamente si necesitas comprobar el detalle de calidad final.
 5. Pulsa **Crear PDF** o **Exportar PDF** desde la matriz. El nombre que escribas en cualquiera de las dos pantallas será el nombre exacto del PDF. Windows solo te pedirá la **carpeta** de destino. **No hay aprobación individual de páginas.**
 
 ### Matriz de revisión
