@@ -109,3 +109,18 @@ copia revisada, sin modificar el archivo original.
 Las vistas previas son de tamaño reducido para navegar rápidamente.
 El PDF conserva la alta resolución de las fotos incluidas. Confirma que
 la copia final se lee al 100 por ciento antes de borrar los originales.
+
+
+NUEVO EN VERSION 1.5, MATRIZ Y VISTA FINAL
+-----------------------------------------
+- Antes de guardar el PDF, pulsa "Ver recortes en matriz (16)".
+  Veras 16 paginas procesadas por pantalla y puedes pasar de bloque.
+  Pulsa una pagina para corregir manualmente sus cuatro esquinas.
+- Despues de crear el archivo, pulsa "Vista final ampliada del PDF".
+  Revisa el documento real con zoom, 100 %, pantalla completa (F11),
+  flechas para pasar pagina y barras para desplazarte.
+- En un PDF existente, el editor incluye "Ver PDF en matriz (16)" y
+  "PDF ampliado". Para comprobar cambios pendientes en la vista final,
+  primero guarda la copia revisada.
+- Las miniaturas aceleran la revision, pero no sustituyen revisar el
+  texto al 100 % de zoom antes de eliminar las fotografias originales.
