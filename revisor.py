@@ -361,10 +361,10 @@ class ReviewWorkspace(PhotoMatrix):
         path = self._file_dialog()
         if path is None:
             return
-        index, old = self.selected, self.paths[self.selected]
+        index = self.selected
         self.on_replace(index, path)
         self.paths[index] = path
-replace approved        self.saved_indices.discard(index)
+        self.saved_indices.discard(index)
         self.dirty = False
         self.show(index//16*16)
         self.choose(index)
