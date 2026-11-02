@@ -385,6 +385,63 @@ class DigitalizadorTests(unittest.TestCase):
         self.assertIn("auto_crop=True", gui)
         self.assertIn("self.optimize_all_button", gui)
 
+    def test_optimizador_principal_trabaja_sobre_sus_esquinas_no_matriz(self):
+        import digitalizador
+        corners = np.float32([[84, 91], [517, 100], [529, 688], [70, 696]])
+        improved = corners + np.float32([[-5, -4], [4, -5], [4, 3], [-4, 3]])
+        with (mock.patch("digitalizador.preview_image",
+                         return_value=(Image.new("RGB", (600, 800), "white"),
+                                       (600, 800))) as preview,
+              mock.patch("digitalizador.refine_automatic_corners",
+                         return_value=improved) as refiner):
+            found = digitalizador.optimize_manual_page_corners(
+                Path("fotografia.heic"), corners)
+        self.assertIsNotNone(found)
+        np.testing.assert_allclose(found, improved)
+        self.assertEqual(refiner.call_args.kwargs["max_passes"], 2)
+        np.testing.assert_allclose(refiner.call_args.args[1], corners)
+        preview.assert_called_once_with(Path("fotografia.heic"), 1600)
+
+    def test_optimizador_principal_no_mueve_puntos_sin_mejora_real(self):
+        import digitalizador
+        corners = np.float32([[84, 91], [517, 100], [529, 688], [70, 696]])
+        with (mock.patch("digitalizador.preview_image",
+                         return_value=(Image.new("RGB", (600, 800), "white"),
+                                       (600, 800))),
+              mock.patch("digitalizador.refine_automatic_corners",
+                         return_value=corners.copy())):
+            self.assertIsNone(
+                digitalizador.optimize_manual_page_corners(
+                    Path("fotografia.heic"), corners))
+
+    def test_optimizador_principal_descarta_picos(self):
+        import digitalizador
+        corners = np.float32([[84, 91], [517, 100], [529, 688], [70, 696]])
+        spike = np.float32([[300, 40], [460, 380], [300, 720], [120, 380]])
+        with (mock.patch("digitalizador.preview_image",
+                         return_value=(Image.new("RGB", (600, 800), "white"),
+                                       (600, 800))),
+              mock.patch("digitalizador.refine_automatic_corners",
+                         return_value=spike)):
+            self.assertIsNone(
+                digitalizador.optimize_manual_page_corners(
+                    Path("fotografia.heic"), corners))
+
+    def test_ajustar_esquinas_principal_no_abre_matriz(self):
+        import inspect
+        import digitalizador
+        source = inspect.getsource(digitalizador.gui_main)
+        adjust = source.split("def adjust_corners(self):", 1)[1].split(
+            "def show_crop_editor(", 1)[0]
+        popup = source.split("def show_crop_editor(", 1)[1].split(
+            "def clean_name(", 1)[0]
+        self.assertIn("crop_ready", adjust)
+        self.assertNotIn("open_matrix(", adjust)
+        self.assertIn("tk.Toplevel", popup)
+        self.assertIn("text=\"Optimizar\"", popup)
+        self.assertIn("optimize_manual_page_corners", popup)
+        self.assertIn("Guardar recorte", popup)
+
     def test_segunda_busqueda_refina_esquinas_desviadas(self):
         import cv2
         from recorte import refinar_esquinas
