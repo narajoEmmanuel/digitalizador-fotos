@@ -378,14 +378,11 @@ def gui_main():
             self.manual_button.state(["disabled"])
             review_bar = ttk.Frame(body)
             review_bar.pack(fill="x", pady=(3, 9))
-            self.matrix_btn = ttk.Button(review_bar, text="Ver recortes en matriz (16)",
+            self.matrix_btn = ttk.Button(review_bar, text="Revisar antes de exportar (matriz + zoom)",
                                          command=self.open_matrix)
             self.matrix_btn.pack(side="left")
             self.matrix_btn.state(["disabled"])
-            ttk.Button(review_bar, text="Ver PDF en matriz / corregir páginas",
-                       command=self.open_pdf_matrix).pack(side="left", padx=(9, 0))
-            ttk.Button(review_bar, text="Vista final ampliada del PDF",
-                       command=self.open_pdf_zoom).pack(side="right")
+            ttk.Label(review_bar, text="Ajusta o sustituye hojas antes de crear el PDF.").pack(side="left", padx=(12, 0))
             ttk.Label(body, text="El programa elimina el fondo cuando identifica la hoja. Puedes ajustar sus cuatro esquinas si es necesario.",
                       foreground="#667085").pack(anchor="w", pady=(0, 10))
 
