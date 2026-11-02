@@ -7,6 +7,8 @@ El programa conserva el color y nunca modifica las fotografías originales.
 from __future__ import annotations
 
 import argparse
+from io import BytesIO
+import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, Future
 from functools import lru_cache
@@ -27,6 +29,7 @@ import cv2
 import numpy as np
 from PIL import ExifTags, Image, ImageCms, ImageOps, ImageTk
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 
 try:
     from pillow_heif import register_heif_opener
@@ -458,17 +461,49 @@ def prepare_page(
         raise
 
 
-def fit_on_page(image_file: Path, pdf: canvas.Canvas):
-    """El PDF ocupa solo el área recortada, sin bordes blancos artificiales."""
-    with Image.open(image_file) as img:
-        w, h = img.size
-    # Tamaño de página según la relación de aspecto real del recorte.
-    # La anchura es equivalente a A4, sin obligar a páginas con márgenes.
+def encode_pdf_jpeg(image: Image.Image) -> bytes:
+    """JPEG 97, RGB, 4:4:4: mismos píxeles sin búsqueda extra de tablas Huffman.
+
+    optimize=False cambia el tamaño de archivo, NO la cuantización del JPEG,
+    el submuestreo de color ni los píxeles decodificados. Reduce tiempo de CPU.
+    """
+    with BytesIO() as buffer:
+        image.save(buffer, "JPEG", quality=97, subsampling=0, optimize=False)
+        return buffer.getvalue()
+
+
+def fit_on_page(image_source: Path | bytes, pdf: canvas.Canvas):
+    """Incrusta JPEG directo desde memoria, sin JPEG temporal ni recodificación."""
+    if isinstance(image_source, bytes):
+        image = ImageReader(BytesIO(image_source))
+        w, h = image.getSize()
+    else:
+        # Compatibilidad con la API anterior para uso externo.
+        with Image.open(image_source) as opened:
+            w, h = opened.size
+        image = str(image_source)
     page_w = 595.28 if w <= h else 841.89
     page_h = page_w * h / w
     pdf.setPageSize((page_w, page_h))
-    pdf.drawImage(str(image_file), 0, 0, width=page_w, height=page_h)
+    pdf.drawImage(image, 0, 0, width=page_w, height=page_h)
     pdf.showPage()
+
+
+def format_export_duration(seconds: float) -> str:
+    """Duración redondeada a segundos, indicada siempre como estimación."""
+    total = max(0, int(seconds + .5))
+    minutes, seconds = divmod(total, 60)
+    return f"{minutes} min {seconds:02d} s" if minutes else f"{seconds} s"
+
+
+def export_progress_details(done: int, total: int, elapsed: float) -> str:
+    """Progreso real de las páginas, no porcentaje ficticio de guardar/verificar."""
+    percent = round(100 * done / max(1, total))
+    status = f"{done}/{total} páginas · {percent} %"
+    if 2 <= done < total and elapsed >= 2:
+        remaining = elapsed / done * (total - done)
+        status += f" · aprox. {format_export_duration(remaining)} restantes"
+    return status
 
 
 def create_pdf(
@@ -477,6 +512,7 @@ def create_pdf(
     manual_corners: dict[Path, np.ndarray] | None = None,
     preserve_input_order: bool = False,
     rotations: dict[Path, int] | None = None,
+    on_stage: Callable[[str], None] | None = None,
 ) -> dict:
     if not paths:
         raise ValueError("La carpeta no contiene fotografías compatibles.")
@@ -488,47 +524,57 @@ def create_pdf(
     warnings: list[str] = []
     errors: list[str] = []
     written = 0
-    with tempfile.TemporaryDirectory(prefix="digitalizador_") as temp_dir:
-        with tempfile.NamedTemporaryFile(
-            prefix=".digitalizador_", suffix=".pdf", dir=target.parent, delete=False
-        ) as pdf_temp:
-            temp_pdf = Path(pdf_temp.name)
-        try:
-            pdf = canvas.Canvas(str(temp_pdf), pagesize=(595.28, 841.89), pageCompression=1)
-            pdf.setTitle(target.stem)
-            pdf.setAuthor("Digitalizador de fotos")
-            pdf.setSubject("Documento digitalizado desde fotografías, sin OCR")
-            for i, path in enumerate(paths, 1):
+    # El PDF provisional se conserva en la carpeta destino para que el
+    # reemplazo final sea atómico. No creamos decenas de JPEG en el disco.
+    with tempfile.NamedTemporaryFile(
+        prefix=".digitalizador_", suffix=".pdf", dir=target.parent, delete=False
+    ) as pdf_temp:
+        temp_pdf = Path(pdf_temp.name)
+    try:
+        pdf = canvas.Canvas(str(temp_pdf), pagesize=(595.28, 841.89), pageCompression=1)
+        pdf.setTitle(target.stem)
+        pdf.setAuthor("Digitalizador de fotos")
+        pdf.setSubject("Documento digitalizado desde fotografías, sin OCR")
+        for i, path in enumerate(paths, 1):
+            try:
+                image, cropped = prepare_page(
+                    path, auto_crop=auto_crop,
+                    manual_corners=(manual_corners or {}).get(path),
+                    rotation=(rotations or {}).get(path, 0),
+                )
                 try:
-                    result, cropped = prepare_page(
-                        path, auto_crop=auto_crop,
-                        manual_corners=(manual_corners or {}).get(path),
-                        rotation=(rotations or {}).get(path, 0),
-                    )
-                    filename = Path(temp_dir) / f"pagina_{i:06d}.jpg"
-                    result.save(filename, "JPEG", quality=97, subsampling=0, optimize=True)
-                    result.close()
-                    fit_on_page(filename, pdf)
-                    written += 1
-                    if auto_crop and not cropped and path not in (manual_corners or {}):
-                        _, reason = automatic_page_corners(path)
-                        warnings.append(path.name + (f': {reason}' if reason else ''))
-                except Exception as exc:
-                    errors.append(f"{path.name}: {exc}")
+                    jpeg = encode_pdf_jpeg(image)
                 finally:
-                    if progress:
-                        progress(i, len(paths), path.name)
-            if errors:
-                raise RuntimeError(f"No se guardó el PDF: {len(errors)} páginas fallaron. " + "; ".join(errors[:5]))
-            if written == 0:
-                raise RuntimeError("No se pudo procesar ninguna imagen. " + "; ".join(errors[:3]))
-            pdf.save()
-            # Si faltan páginas o imágenes, no se deja un PDF aparentemente terminado.
-            verify_pdf_export(temp_pdf, written)
-            os.replace(temp_pdf, target)
-        finally:
-            if temp_pdf.exists():
-                temp_pdf.unlink()
+                    image.close()
+                # ReportLab conserva la codificación JPEG original en el PDF.
+                fit_on_page(jpeg, pdf)
+                del jpeg
+                written += 1
+                if auto_crop and not cropped and path not in (manual_corners or {}):
+                    _, reason = automatic_page_corners(path)
+                    warnings.append(path.name + (f': {reason}' if reason else ''))
+            except Exception as exc:
+                errors.append(f"{path.name}: {exc}")
+            finally:
+                if progress:
+                    progress(i, len(paths), path.name)
+        if errors:
+            raise RuntimeError(f"No se guardó el PDF: {len(errors)} páginas fallaron. " + "; ".join(errors[:5]))
+        if written == 0:
+            raise RuntimeError("No se pudo procesar ninguna imagen. " + "; ".join(errors[:3]))
+        if on_stage:
+            on_stage("saving")
+        pdf.save()
+        # Verificar el archivo completo antes de darle el nombre definitivo.
+        if on_stage:
+            on_stage("verifying")
+        verify_pdf_export(temp_pdf, written)
+        if target.exists():
+            raise FileExistsError(f"Ya existe {target}. Se conserva el PDF anterior.")
+        os.replace(temp_pdf, target)
+    finally:
+        if temp_pdf.exists():
+            temp_pdf.unlink()
     return {"pages": written, "uncropped": warnings, "errors": errors, "file": str(target)}
 
 
@@ -580,6 +626,7 @@ def gui_main():
             self.preview_after = None
             self.preview_pool = ThreadPoolExecutor(max_workers=2)
             self.detection_pool = ThreadPoolExecutor(max_workers=1)
+            self.detection_paused = threading.Event()
             self.import_pool = ThreadPoolExecutor(max_workers=1)
             self.import_generation = 0
             self.import_loading = False
@@ -749,6 +796,11 @@ def gui_main():
                 for photo in photos:
                     if generation != self.detection_generation:
                         return
+                    # Prioridad a generar el PDF, sin competir por CPU.
+                    while self.detection_paused.is_set():
+                        if generation != self.detection_generation:
+                            return
+                        time.sleep(.12)
                     try:
                         _corners, issue = automatic_page_corners(photo)
                         warnings += bool(issue)
@@ -1021,12 +1073,14 @@ def gui_main():
             if review is not None and not review.closed:
                 review.begin_export(target, len(self.paths))
             self.busy = True
+            self.detection_paused.set()
+            self.export_started_at = time.monotonic()
             self.folder_button.state(["disabled"])
             self.make_button.state(["disabled"])
             self.manual_button.state(["disabled"])
             self.matrix_btn.state(["disabled"])
             self.name_entry.state(["disabled"])
-            self.progress.configure(maximum=len(self.paths), value=0)
+            self.progress.configure(mode="determinate", maximum=100, value=0)
             self.progress_text.set(f"Preparando {len(self.paths)} páginas...")
             paths = list(self.paths)
             should_crop = self.auto_crop.get()
@@ -1037,7 +1091,8 @@ def gui_main():
                 try:
                     output = create_pdf(paths, target, should_crop,
                         progress=lambda number, total, name: self.events.put(("progress", number, total, name)),
-                        manual_corners=manual, preserve_input_order=True, rotations=rotations)
+                        manual_corners=manual, preserve_input_order=True, rotations=rotations,
+                        on_stage=lambda stage: self.events.put(("export_stage", stage)))
                     self.events.put(("done", output))
                 except Exception as exc:
                     self.events.put(("failed", str(exc), traceback.format_exc()))
@@ -1093,14 +1148,28 @@ def gui_main():
                             review.set_detection_progress(done, total)
                 elif event[0] == "progress":
                     _, n, total, name = event
-                    self.progress.configure(value=n)
-                    self.progress_text.set(f"Procesando {n} de {total}: {name}")
+                    elapsed = time.monotonic() - self.export_started_at
+                    detail = export_progress_details(n, total, elapsed)
+                    self.progress.configure(value=95*n/max(1, total))
+                    self.progress_text.set(f"Exportando PDF · {detail}")
                     review = self.export_review
                     if review is not None and not review.closed:
-                        review.update_export_progress(n, total)
+                        review.update_export_progress(n, total, elapsed)
+                elif event[0] == "export_stage":
+                    stage = event[1]
+                    self.progress.configure(mode="indeterminate")
+                    self.progress.start(12)
+                    self.progress_text.set(
+                        "Verificando PDF..." if stage == "verifying"
+                        else "Guardando PDF...")
+                    review = self.export_review
+                    if review is not None and not review.closed:
+                        review.update_export_stage(stage)
                 elif event[0] == "done":
                     info = event[1]
                     self.latest_pdf = Path(info['file'])
+                    self.progress.stop()
+                    self.progress.configure(mode="determinate", value=100)
                     self.reset_controls()
                     review = self.export_review
                     dialog_parent = (review.window if review is not None and not review.closed
@@ -1119,6 +1188,8 @@ def gui_main():
                     if review is None or review.closed:
                         messagebox.showinfo("PDF terminado", details, parent=dialog_parent)
                 elif event[0] == "failed":
+                    self.progress.stop()
+                    self.progress.configure(mode="determinate", value=0)
                     self.reset_controls()
                     self.progress_text.set("No se pudo crear el PDF.")
                     review = self.export_review
@@ -1142,6 +1213,7 @@ def gui_main():
 
         def reset_controls(self):
             self.busy = False
+            self.detection_paused.clear()
             self.folder_button.state(["!disabled"])
             self.make_button.state(["!disabled"] if self.paths else ["disabled"])
             self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
