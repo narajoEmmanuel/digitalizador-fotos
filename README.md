@@ -13,7 +13,8 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 ### Rendimiento
 
 - El lote de fotografías se importa y ordena por EXIF sin congelar la ventana.
-- La casilla **Recorte automático** activa o desactiva el recorte para todas las hojas, incluso con la matriz abierta. Al reactivarla se vuelve a detectar y optimizar el lote completo, con un contador visible. Los recortes manuales no se eliminan. Al desactivar se exportan fotografías completas excepto las páginas que hayas recortado manualmente.
+- En la **pantalla principal**, el botón **Optimizar todas** refina el lote completo a partir de las esquinas ya detectadas y muestra **X/Y páginas y porcentaje**, sin bloquear la aplicación. Las páginas corregidas manualmente se respetan y no se sobrescriben. Al terminar, la matriz y la vista previa se actualizan, y el PDF utiliza las esquinas optimizadas.
+- La casilla **Recorte automático** enciende o apaga el recorte para todas las hojas, incluso con la matriz abierta. Al reactivarla se reinicia el análisis inicial. Si está desactivada, **Optimizar todas** la habilita antes de trabajar.
 - El detector trabaja a 1600 píxeles y realiza hasta dos refinamientos, con las mismas esquinas para la matriz, la vista final y el PDF.
 - La matriz y la vista de lectura comparten una caché limitada de 24 imágenes. Dos trabajadores preparan las miniaturas en paralelo, sin bloquear la imagen seleccionada.
 - **Solo al ampliar** una hoja se carga el resultado final a alta resolución, con la misma compresión JPEG utilizada en el PDF.
@@ -28,7 +29,7 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 - **Rueda del mouse:** zoom alrededor del puntero. **Arrastrar:** mover la imagen ampliada. **Doble clic:** encajar la página.
 - La vista de calidad presenta las dimensiones finales en píxeles y el zoom. A **100 %**, un píxel de imagen corresponde a un píxel de pantalla.
 - **Activar esquinas / Desactivar esquinas:** interruptor global del revisor. Al activarlo, todas las páginas que selecciones muestran los cuatro puntos hasta que lo desactives. No asigna las mismas esquinas a todas; cada fotografía tiene su propio recorte.
-- **Detectar / Optimizar:** si ya hay una detección automática, el botón permite **Optimizar** directamente. Si una hoja necesita volver a detectarse, el primer clic ejecuta también los dos refinamientos antes de mostrarla. Los ajustes manuales guardados prevalecen hasta que el usuario decida cambiarlos. **Guardar recorte** confirma el ajuste para el PDF.
+- **Detectar / Optimizar (solo esta hoja):** si ya hay una detección automática, el botón permite **Optimizar** directamente. Si una hoja necesita volver a detectarse, el primer clic ejecuta también los dos refinamientos antes de mostrarla. Los ajustes manuales guardados prevalecen hasta que el usuario decida cambiarlos. **Guardar recorte** confirma el ajuste para el PDF.
 - **Sustituir:** cambia la fotografía seleccionada. **+ Antes** y **+ Después:** insertan una página en el lugar indicado.
 - **↶ 90° / 90° ↷:** giran únicamente la página seleccionada a izquierda o derecha. La miniatura, vista ampliada y PDF final respetan el giro. La fotografía original y las esquinas guardadas no cambian. Puedes pulsar dos veces para girar 180°, o deshacer girando al lado contrario.
 
@@ -94,4 +95,4 @@ Uso opcional por consola:
 - `vistas.py`: utilidades de visualización.
 - `tests/`: pruebas automatizadas.
 
-**Versión actual: 1.17.1.**
+**Versión actual: 1.18.**
