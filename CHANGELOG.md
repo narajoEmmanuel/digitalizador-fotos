@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## 1.17 (2026-11-02)
+
+- Exportación PDF sin JPEG intermedios en disco: cada imagen procesada se comprime en memoria y se incrusta directamente como JPEG, sin recodificarla al incorporarla al PDF.
+- JPEG calidad 97 y submuestreo 4:4:4 sin optimización de tablas Huffman, manteniendo exactamente los mismos píxeles decodificados; el archivo puede ser un poco más grande.
+- La detección automática de esquinas en segundo plano se pausa durante la exportación para evitar competencia de CPU.
+- Matriz y pantalla principal muestran cantidad de páginas procesadas, porcentaje y estimación del tiempo restante de procesamiento.
+- Etapas explícitas Guardando PDF y Verificando páginas, con actividad visible hasta que se valida el PDF completo.
+- Pruebas de equivalencia de píxeles, bytes JPEG incrustados, ausencia de JPEG temporales, etapas de exportación y estados de progreso.
+
+
 ## 1.16.2 (2026-11-01)
 
 - El botón **Editar esquinas** de la pantalla principal abre la misma herramienta utilizada por la matriz, posicionada en la fotografía seleccionada.
