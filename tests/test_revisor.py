@@ -387,6 +387,61 @@ class ReviewFlowTests(unittest.TestCase):
         panel._request_full_preview()
         panel.quick_pool.submit.assert_called_once()
 
+    def test_casilla_actualiza_revisor_abierto_y_matriz(self):
+        from unittest.mock import Mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.closed = False
+        panel.auto_crop = True
+        panel.detect_steps = {Path("p.jpg"): 1}
+        panel.mode = "preview"
+        panel.invalidate_all_previews = Mock()
+        panel.preview_mode = Mock()
+        panel._set_mode_controls = Mock()
+        panel.set_auto_crop(False)
+        self.assertFalse(panel.auto_crop)
+        self.assertEqual(panel.detect_steps, {})
+        panel.invalidate_all_previews.assert_called_once()
+        panel.preview_mode.assert_called_once()
+        panel.set_auto_crop(False)
+        panel.invalidate_all_previews.assert_called_once()
+
+    def test_casilla_conserva_esquinas_que_no_se_han_guardado(self):
+        from unittest.mock import Mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.closed = False
+        panel.auto_crop = False
+        panel.detect_steps = {}
+        panel.mode = "edit"
+        panel.selected = 0
+        panel.dirty = True
+        panel.invalidate_all_previews = Mock()
+        panel._set_mode_controls = Mock()
+        panel.status = Mock()
+        panel.set_auto_crop(True)
+        self.assertTrue(panel.dirty)
+        self.assertTrue(panel.auto_crop)
+        self.assertIn("sin guardar", panel.status.set.call_args.args[0])
+
+    def test_cache_rechaza_trabajo_del_modo_automatico_anterior(self):
+        from collections import OrderedDict
+        from threading import Lock
+        from unittest.mock import Mock
+        from revisor_base import PhotoMatrix
+        panel = PhotoMatrix.__new__(PhotoMatrix)
+        panel.closed = False
+        panel.quick_lock = Lock()
+        panel.quick_cache = OrderedDict()
+        panel.quick_revision = 0
+        def slow_provider(path):
+            panel.quick_revision += 1
+            return Image.new("RGB", (120, 160), "white"), None
+        panel.preview_provider = Mock(side_effect=slow_provider)
+        with self.assertRaisesRegex(RuntimeError, "Vista anterior"):
+            panel.get_quick_preview(Path("hoja.jpg"))
+        self.assertEqual(len(panel.quick_cache), 0)
+
     def test_preparacion_se_oculta_al_terminar_lote(self):
         from unittest.mock import Mock
         from revisor import ReviewWorkspace
