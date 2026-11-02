@@ -494,6 +494,10 @@ def gui_main():
             self.preview_pool = ThreadPoolExecutor(max_workers=2)
             self.detection_pool = ThreadPoolExecutor(max_workers=1)
             self.detection_generation = 0
+            self.detection_done = 0
+            self.detection_total = 0
+            self.detection_warnings = 0
+            self.active_review = None
             self.page_position = tk.StringVar(value='Página 0 de 0')
             self.crop_loading = False
             self.latest_pdf: Path | None = None
@@ -600,6 +604,12 @@ def gui_main():
             self.folder = chosen_folder
             self.paths = chosen_paths
             self.detection_generation += 1
+            self.detection_done = 0
+            self.detection_total = len(chosen_paths)
+            self.detection_warnings = 0
+            if self.active_review is not None and not self.active_review.closed:
+                self.active_review.close()
+            self.active_review = None
             self.manual_corners = {}
             self.rotations = {}
             self.preview_cache.clear()
@@ -703,6 +713,10 @@ def gui_main():
             if not self.paths or self.busy:
                 return
             from revisor import ReviewWorkspace
+            if self.active_review is not None and not self.active_review.closed:
+                self.active_review.window.lift()
+                self.active_review.window.focus_force()
+                return
             manual = self.manual_corners
             auto = self.auto_crop.get()
 
@@ -715,11 +729,14 @@ def gui_main():
                     _, reason = automatic_page_corners(path)
                 return result, reason
 
-            ReviewWorkspace(self.root, self.paths, processed, self._matrix_save,
-                            preview_image, manual, self._replace_review_photo,
-                            self._insert_review_photo, self.make_pdf, auto_crop=auto,
-                            pdf_name=self.pdf_name, rotations=self.rotations,
-                            on_rotate=self._rotate_review_photo)
+            self.active_review = ReviewWorkspace(
+                self.root, self.paths, processed, self._matrix_save,
+                preview_image, manual, self._replace_review_photo,
+                self._insert_review_photo, self.make_pdf, auto_crop=auto,
+                pdf_name=self.pdf_name, rotations=self.rotations,
+                on_rotate=self._rotate_review_photo)
+            self.active_review.set_detection_progress(
+                self.detection_done, self.detection_total)
 
         def _matrix_save(self, index, corners):
             photo = self.paths[index]
@@ -1063,9 +1080,15 @@ def gui_main():
                 elif event[0] == "batch_detection":
                     _, generation, done, total, warnings = event
                     if generation == self.detection_generation:
-                        self.progress_text.set(
-                            f"Recortes preparados: {done}/{total}"
-                            + (f" · {warnings} para revisar" if warnings else ""))
+                        self.detection_done, self.detection_total = done, total
+                        self.detection_warnings = warnings
+                        if not self.busy:
+                            self.progress_text.set(
+                                f"Recortes preparados: {done}/{total}"
+                                + (f" · {warnings} para revisar" if warnings else ""))
+                        review = self.active_review
+                        if review is not None and not review.closed:
+                            review.set_detection_progress(done, total)
                 elif event[0] == 'crop_ready':
                     _, photo, preview, size, detection, failure = event
                     self.crop_loading = False
