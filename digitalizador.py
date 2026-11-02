@@ -284,7 +284,28 @@ def automatic_page_corners(photo: Path) -> tuple[np.ndarray | None, str | None]:
     return (corners.copy() if corners is not None else None), reason
 
 
-def preview_pair(photo: Path, auto_crop: bool, manual_corners: np.ndarray | None):
+def normalized_rotation(degrees: int) -> int:
+    """Solo cuartos de vuelta, sin pérdida de calidad ni interpolaciones."""
+    if not isinstance(degrees, int) or degrees % 90:
+        raise ValueError("El giro debe ser 0, 90, 180 o 270 grados.")
+    return degrees % 360
+
+
+def rotate_final_page(image: Image.Image, degrees: int) -> Image.Image:
+    """Giro horario del resultado final, sin modificar el archivo original."""
+    turns = normalized_rotation(degrees)
+    if turns == 0:
+        return image
+    transposes = {90: Image.Transpose.ROTATE_270,
+                  180: Image.Transpose.ROTATE_180,
+                  270: Image.Transpose.ROTATE_90}
+    rotated = image.transpose(transposes[turns])
+    image.close()
+    return rotated
+
+
+def preview_pair(photo: Path, auto_crop: bool, manual_corners: np.ndarray | None,
+                 rotation: int = 0):
     """Miniatura con la misma geometría que el PDF real."""
     original, (full_w, full_h) = preview_image(photo, 1050)
     frame = np.asarray(original)
@@ -309,11 +330,12 @@ def preview_pair(photo: Path, auto_crop: bool, manual_corners: np.ndarray | None
             processed.close()
             processed = Image.fromarray(result, "RGB")
             cropped = True
-    return original, processed, cropped
+    return original, rotate_final_page(processed, rotation), cropped
 
 
 def prepare_page(
     photo: Path, auto_crop: bool = True, manual_corners: np.ndarray | None = None,
+    rotation: int = 0,
 ) -> tuple[Image.Image, bool]:
     """Transforma a resolución completa usando esquinas de la misma vista previa."""
     if manual_corners is not None:
@@ -343,7 +365,7 @@ def prepare_page(
                 cropped = True
         if not cropped and max(pil.size) > MAX_SIDE:
             pil.thumbnail((MAX_SIDE, MAX_SIDE), Image.Resampling.LANCZOS)
-        return pil, cropped
+        return rotate_final_page(pil, rotation), cropped
     except Exception:
         pil.close()
         raise
@@ -367,6 +389,7 @@ def create_pdf(
     progress: Callable[[int, int, str], None] | None = None,
     manual_corners: dict[Path, np.ndarray] | None = None,
     preserve_input_order: bool = False,
+    rotations: dict[Path, int] | None = None,
 ) -> dict:
     if not paths:
         raise ValueError("La carpeta no contiene fotografías compatibles.")
@@ -393,6 +416,7 @@ def create_pdf(
                     result, cropped = prepare_page(
                         path, auto_crop=auto_crop,
                         manual_corners=(manual_corners or {}).get(path),
+                        rotation=(rotations or {}).get(path, 0),
                     )
                     filename = Path(temp_dir) / f"pagina_{i:06d}.jpg"
                     result.save(filename, "JPEG", quality=97, subsampling=0, optimize=True)
@@ -454,6 +478,7 @@ def gui_main():
             self.folder: Path | None = None
             self.paths: list[Path] = []
             self.manual_corners: dict[Path, np.ndarray] = {}
+            self.rotations: dict[Path, int] = {}
             self.pdf_name = tk.StringVar(value="")
             self.previous_folder_name: str | None = None
             self.auto_crop = tk.BooleanVar(value=True)
@@ -573,6 +598,7 @@ def gui_main():
             self.folder = chosen_folder
             self.paths = chosen_paths
             self.manual_corners = {}
+            self.rotations = {}
             self.preview_cache.clear()
             self.preview_pending.clear()
             self.preview_token += 1
@@ -621,12 +647,28 @@ def gui_main():
             self.progress_text.set(f"{len(self.paths)} páginas listas para revisión y exportación")
 
         def _replace_review_photo(self, index, new_path):
+            old_path = self.paths[index]
+            self.rotations.pop(old_path, None)
+            self.manual_corners.pop(old_path, None)
             self.paths[index] = new_path
             self._sync_review_list(index)
 
         def _insert_review_photo(self, index, new_path):
             self.paths.insert(index, new_path)
             self._sync_review_list(index)
+
+        def _rotate_review_photo(self, index: int, degrees: int) -> int:
+            photo = self.paths[index]
+            rotation = normalized_rotation(self.rotations.get(photo, 0) + degrees)
+            if rotation:
+                self.rotations[photo] = rotation
+            else:
+                self.rotations.pop(photo, None)
+            self.preview_cache.clear()
+            self.preview_pending.clear()
+            self.preview_token += 1
+            self.refresh_preview()
+            return rotation
 
         def open_matrix(self):
             """Matriz, ajuste, zoom y sustituciones ANTES de exportar el PDF."""
@@ -637,7 +679,8 @@ def gui_main():
             auto = self.auto_crop.get()
 
             def processed(path):
-                original, result, _ = preview_pair(path, auto, manual.get(path))
+                original, result, _ = preview_pair(
+                    path, auto, manual.get(path), rotation=self.rotations.get(path, 0))
                 original.close()
                 reason = None
                 if auto and path not in manual:
@@ -647,7 +690,8 @@ def gui_main():
             ReviewWorkspace(self.root, self.paths, processed, self._matrix_save,
                             preview_image, manual, self._replace_review_photo,
                             self._insert_review_photo, self.make_pdf, auto_crop=auto,
-                            pdf_name=self.pdf_name)
+                            pdf_name=self.pdf_name, rotations=self.rotations,
+                            on_rotate=self._rotate_review_photo)
 
         def _matrix_save(self, index, corners):
             photo = self.paths[index]
@@ -733,7 +777,7 @@ def gui_main():
             if self.preview_after is not None:
                 self.root.after_cancel(self.preview_after)
             key = (photo, self.auto_crop.get(), tuple(self.manual_corners[photo].ravel())
-                   if photo in self.manual_corners else None)
+                   if photo in self.manual_corners else None, self.rotations.get(photo, 0))
             if key in self.preview_cache:
                 self.preview_cache.move_to_end(key)
                 orig, result, cropped = self.preview_cache[key]
@@ -748,13 +792,13 @@ def gui_main():
                 return
             if len(self.preview_pending) >= 6:
                 return
-            photo, crop, _ = key
+            photo, crop, _, rotation = key
             manual = self.manual_corners.get(photo)
             self.preview_pending.add(key)
             # Procesamiento fuera del hilo de interfaz: el usuario puede navegar mientras carga.
             def work():
                 try:
-                    result = preview_pair(photo, crop, manual)
+                    result = preview_pair(photo, crop, manual, rotation=rotation)
                     self.events.put(('preview', token, key, result, None))
                 except Exception as exc:
                     self.events.put(('preview', token, key, None, str(exc)))
@@ -766,7 +810,8 @@ def gui_main():
                 if 0 <= n < len(self.paths):
                     photo = self.paths[n]
                     key = (photo, self.auto_crop.get(),
-                           tuple(self.manual_corners[photo].ravel()) if photo in self.manual_corners else None)
+                           tuple(self.manual_corners[photo].ravel()) if photo in self.manual_corners else None,
+                           self.rotations.get(photo, 0))
                     self._submit_preview(-1, key)
 
         def adjust_corners(self):
@@ -950,12 +995,13 @@ def gui_main():
             paths = list(self.paths)
             should_crop = self.auto_crop.get()
             manual = dict(self.manual_corners)
+            rotations = dict(self.rotations)
 
             def worker():
                 try:
                     output = create_pdf(paths, target, should_crop,
                         progress=lambda number, total, name: self.events.put(("progress", number, total, name)),
-                        manual_corners=manual, preserve_input_order=True)
+                        manual_corners=manual, preserve_input_order=True, rotations=rotations)
                     self.events.put(("done", output))
                 except Exception as exc:
                     self.events.put(("failed", str(exc), traceback.format_exc()))
@@ -978,7 +1024,8 @@ def gui_main():
                     if current and self.paths[current[0]] == key[0]:
                         expected = (key[0], self.auto_crop.get(),
                                     tuple(self.manual_corners[key[0]].ravel())
-                                    if key[0] in self.manual_corners else None)
+                                    if key[0] in self.manual_corners else None,
+                                    self.rotations.get(key[0], 0))
                         if key == expected:
                             if failure:
                                 self.preview_status.set(f'Vista previa no disponible: {failure}')

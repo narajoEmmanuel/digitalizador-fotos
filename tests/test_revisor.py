@@ -221,6 +221,25 @@ class ReviewFlowTests(unittest.TestCase):
                 panel.open_exported_pdf()
                 run.assert_called_once_with(str(target))
 
+    def test_rotar_recalcula_miniatura_y_mantiene_vista_final(self):
+        from unittest.mock import Mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.selected = 0
+        panel.paths = [Path("foto.jpg")]
+        panel._pending = Mock(return_value=True)
+        panel.on_rotate = Mock(return_value=90)
+        panel.refresh_item = Mock()
+        panel.preview_mode = Mock()
+        panel.status = Mock()
+        panel.corners_enabled = True
+        panel.window = Mock()
+        panel.rotate(90)
+        panel.on_rotate.assert_called_once_with(0, 90)
+        panel.refresh_item.assert_called_once_with(0)
+        panel.preview_mode.assert_called_once()
+        self.assertFalse(panel.corners_enabled)
+
     def test_miniaturas_respetan_monitores_pequenos(self):
         from revisor_base import matrix_thumbnail_size
         small = matrix_thumbnail_size(800, 600)

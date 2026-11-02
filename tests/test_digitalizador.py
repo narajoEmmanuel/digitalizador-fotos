@@ -12,6 +12,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from digitalizador import (capture_datetime, create_pdf, discover_images, prepare_page,
                           preview_pair, automatic_page_corners,
+                          rotate_final_page, normalized_rotation,
                           normalize_pdf_destination, normalized_pdf_name, verify_pdf_export,
                           build_export_destination, export_success_text)
 from recorte import detectar_hoja
@@ -163,6 +164,49 @@ class DigitalizadorTests(unittest.TestCase):
             original.close()
             thumbnail.close()
             final.close()
+
+    def test_giro_horario_y_antihorario_sin_perder_pixeles(self):
+        expected = np.zeros((2, 3, 3), dtype=np.uint8)
+        for y in range(2):
+            for x in range(3):
+                expected[y, x] = (y*100 + x*20, 15, 15)
+        image = Image.fromarray(expected, "RGB")
+        right = rotate_final_page(image, 90)
+        self.assertEqual(right.size, (2, 3))
+        np.testing.assert_array_equal(np.asarray(right), np.rot90(expected, -1))
+        left = rotate_final_page(right, -90)
+        np.testing.assert_array_equal(np.asarray(left), expected)
+        left.close()
+        self.assertEqual(normalized_rotation(450), 90)
+        with self.assertRaisesRegex(ValueError, "giro"):
+            normalized_rotation(45)
+
+    def test_giro_se_exporta_y_conserva_la_foto_original(self):
+        import fitz
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "girada.jpg"
+            image = np.zeros((120, 240, 3), np.uint8)
+            image[:, :120] = [225, 55, 55]
+            image[:, 120:] = [50, 140, 220]
+            Image.fromarray(image).save(source, quality=98)
+            original = source.read_bytes()
+            orig, small, cropped = preview_pair(source, False, None, rotation=90)
+            self.assertEqual(small.size, (120, 240))
+            preview, _ = prepare_page(source, False, rotation=90)
+            self.assertEqual(preview.size, small.size)
+            target = Path(folder) / "orientada.pdf"
+            create_pdf([source], target, auto_crop=False,
+                       preserve_input_order=True, rotations={source: 90})
+            with fitz.open(target) as pdf:
+                self.assertEqual(pdf.page_count, 1)
+                self.assertGreater(pdf[0].rect.height, pdf[0].rect.width)
+                page_img = pdf[0].get_images(full=True)[0]
+                embedded = fitz.Pixmap(pdf, page_img[0])
+                self.assertEqual((embedded.width, embedded.height), (120, 240))
+            self.assertEqual(source.read_bytes(), original)
+            orig.close()
+            small.close()
+            preview.close()
 
     def test_pagina_se_recorta_y_preserva_color(self):
         with tempfile.TemporaryDirectory() as d:

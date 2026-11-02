@@ -8,14 +8,16 @@ from recorte import detectar_hoja, ordenar_esquinas
 from revisor_base import PhotoMatrix, validated_photo_corners
 
 
-def final_export_preview(photo: Path, auto_crop: bool, corners=None) -> Image.Image:
+def final_export_preview(photo: Path, auto_crop: bool, corners=None,
+                         rotation: int = 0) -> Image.Image:
     """Replica los píxeles y la codificación JPEG que se insertarán en el PDF.
 
     La vista no depende de una miniatura; parte de la foto original, realiza
     exactamente el mismo recorte a resolución completa y aplica calidad JPEG 97.
     """
     from digitalizador import prepare_page
-    image, _cropped = prepare_page(photo, auto_crop=auto_crop, manual_corners=corners)
+    image, _cropped = prepare_page(
+        photo, auto_crop=auto_crop, manual_corners=corners, rotation=rotation)
     try:
         with BytesIO() as buffer:
             image.save(buffer, "JPEG", quality=97, subsampling=0, optimize=True)
@@ -39,7 +41,7 @@ class ReviewWorkspace(PhotoMatrix):
 
     def __init__(self, parent, paths, preview_provider, on_save, photo_loader,
                  manual_corners, on_replace, on_insert, on_export, auto_crop=True,
-                 pdf_name=None):
+                 pdf_name=None, rotations=None, on_rotate=None):
         self.mode = "preview"
         self.corners_enabled = False  # Preferencia para todas las hojas del revisor.
         self.dirty = False
@@ -54,6 +56,8 @@ class ReviewWorkspace(PhotoMatrix):
         self.on_replace, self.on_insert, self.on_export = on_replace, on_insert, on_export
         self.auto_crop = auto_crop
         self.pdf_name = pdf_name
+        self.rotations = rotations if rotations is not None else {}
+        self.on_rotate = on_rotate
         super().__init__(parent, paths, preview_provider, on_save, photo_loader, manual_corners)
         from tkinter import ttk
         self.window.title("Revisión de páginas")
@@ -77,6 +81,12 @@ class ReviewWorkspace(PhotoMatrix):
         ttk.Button(changes, text="Sustituir", command=self.replace).pack(side="left")
         ttk.Button(changes, text="+ Antes", command=lambda: self.insert(False)).pack(side="left", padx=5)
         ttk.Button(changes, text="+ Después", command=lambda: self.insert(True)).pack(side="left")
+        rotate_bar = ttk.Frame(self.controls)
+        rotate_bar.pack(fill="x", pady=(4, 0), before=self.status_widget)
+        ttk.Button(rotate_bar, text="↶ 90°", command=lambda: self.rotate(-90)).pack(
+            side="left", fill="x", expand=True, padx=(0, 3))
+        ttk.Button(rotate_bar, text="90° ↷", command=lambda: self.rotate(90)).pack(
+            side="left", fill="x", expand=True, padx=(3, 0))
 
         self.quality_label = self.tk.StringVar(value="")
         ttk.Label(self.controls, textvariable=self.quality_label).pack(
@@ -324,7 +334,8 @@ class ReviewWorkspace(PhotoMatrix):
         def load():
             try:
                 im = final_export_preview(photo,
-                    auto_crop=self.auto_crop or quad is not None, corners=quad)
+                    auto_crop=self.auto_crop or quad is not None,
+                    corners=quad, rotation=self.rotations.get(photo, 0))
                 self.big_events.put((token, index, im, None))
             except Exception as exc:
                 self.big_events.put((token, index, None, str(exc)))
@@ -462,6 +473,25 @@ class ReviewWorkspace(PhotoMatrix):
                                       [w*.95, h*.95], [w*.05, h*.95]])
         self.dirty = False
         return True
+
+    def rotate(self, degrees: int):
+        """Gira únicamente la página seleccionada, sin tocar la foto original."""
+        from tkinter import messagebox
+        if self.selected is None or self.on_rotate is None:
+            return
+        if not self._pending():
+            return
+        try:
+            result = self.on_rotate(self.selected, degrees)
+        except Exception as exc:
+            messagebox.showerror("No se pudo girar", str(exc), parent=self.window)
+            return
+        self.refresh_item(self.selected)
+        # Los puntos de recorte siguen en coordenadas de la foto original.
+        # Mostrar la página final girada, no un editor de esquinas desorientado.
+        self.corners_enabled = False
+        self.preview_mode()
+        self.status.set(f"Giro: {result}°")
 
     def replace(self):
         if self.selected is None or not self._pending():

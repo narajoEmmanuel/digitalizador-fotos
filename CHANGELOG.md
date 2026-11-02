@@ -1,5 +1,14 @@
 # Historial de cambios
 
+## 1.12 (2026-11-01)
+
+- Botones de giro de 90° a izquierda o derecha en la matriz, sin modificar archivos originales.
+- Cada hoja conserva su orientación independiente de las demás.
+- La miniatura, la vista ampliada, la previsualización de inicio y la exportación PDF aplican el mismo giro sin recompresión adicional.
+- Los recortes manuales siguen en coordenadas originales, el giro actúa después de corregir la perspectiva.
+- Pruebas de dirección del giro, conservación de píxeles, vista previa y orientación del PDF resultante.
+
+
 ## 1.11 (2026-11-01)
 
 - Corregido el desacuerdo entre el detector de esquinas de las miniaturas y el de la exportación.
