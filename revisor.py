@@ -47,6 +47,8 @@ class ReviewWorkspace(PhotoMatrix):
         self.dirty = False
         self.big_image = None
         self.big_photo = None
+        self.full_preview = False
+        self.full_pending_token = None
         self.big_token = 0
         self.big_events = queue.Queue()
         self.fit = True
@@ -202,10 +204,8 @@ class ReviewWorkspace(PhotoMatrix):
             return "break"
 
     def _load_editor(self, preview, size, detected):
-        """Mostrar la imagen exportable al cargar cada miniatura, no las esquinas."""
+        """El editor de cuatro esquinas se carga solo al activar la herramienta."""
         super()._load_editor(preview, size, detected)
-        if self.mode == "preview":
-            self.preview_mode()
 
     def _page_caption(self, index):
         warning = self.crop_warnings.get(self.paths[index])
@@ -277,17 +277,30 @@ class ReviewWorkspace(PhotoMatrix):
         return True
 
     def choose(self, index):
+        if self.closed or not 0 <= index < len(self.paths):
+            return
         if self.selected is not None and self.selected != index and not self._pending():
             return
-        # Nunca desactivar la herramienta al seleccionar otra miniatura.
-        self.mode = "edit" if getattr(self, "corners_enabled", False) else "preview"
+        self.mode = "edit" if self.corners_enabled else "preview"
         self._set_mode_controls()
         self.dirty = False
         self.big_token += 1
+        self.full_pending_token = None
         if self.big_image is not None:
             self.big_image.close()
             self.big_image = None
-        super().choose(index)
+        if self.mode == "edit":
+            super().choose(index)
+        else:
+            # No cargar la foto a 1600 px ni detectarla de nuevo al hacer clic.
+            # Basta la vista de 1050 px que alimenta la matriz.
+            self.selected = index
+            self.selection_token += 1
+            self._highlight_selection()
+            self.current_label.set(f"Página {index+1} de {len(self.paths)}")
+            self.save_button.state(["disabled"])
+            self.reset_button.state(["disabled"])
+            self._show_quick_preview()
 
     def _draw_editor(self):
         if self.mode == "preview":
@@ -303,50 +316,88 @@ class ReviewWorkspace(PhotoMatrix):
         if self.big_image is not None:
             self.big_image.close()
             self.big_image = None
-        if self.selected is not None and self.editor_image is not None:
-            super()._draw_editor()
+        # No usar la imagen/las esquinas de la página seleccionada anteriormente.
+        if self.selected is not None:
+            if self.editor_loaded_index != self.selected or self.editor_image is None:
+                super().choose(self.selected)
+            else:
+                super()._draw_editor()
+
+    def _show_quick_preview(self):
+        """Vista ligera inmediata, sin lectura completa ni codificación JPEG."""
+        if self.selected is None or self.mode != "preview" or self.closed:
+            return
+        index = self.selected
+        token = self.big_token
+        path = self.paths[index]
+        self.board.delete("all")
+        self.board.create_text(20, 20, text="Cargando...", fill="white", anchor="nw")
+        self.quality_label.set("")
+        issue = self.crop_warnings.get(path) if path not in self.manual_corners else None
+        self.status.set(f"⚠ {issue}. Revisa esta hoja." if issue else "")
+        with self.quick_lock:
+            item = self.quick_cache.get(path)
+            if item is not None:
+                im, _warning = item
+                self.quick_cache.move_to_end(path)
+                quick = im.copy()
+            else:
+                quick = None
+        if quick is not None:
+            self._accept_quick_preview(quick)
+        else:
+            def load():
+                try:
+                    image, _warning = self.get_quick_preview(path)
+                    self.big_events.put(("quick", token, index, image, None))
+                except Exception as exc:
+                    self.big_events.put(("quick", token, index, None, str(exc)))
+            self.quick_pool.submit(load)
+
+    def _accept_quick_preview(self, image):
+        if self.big_image is not None:
+            self.big_image.close()
+        self.big_image = image
+        self.full_preview = False
+        self.fit = True
+        self.pan_x = self.pan_y = 0
+        self._draw_big()
+
+    def _request_full_preview(self):
+        """Solo procesar megapíxeles originales cuando el usuario pide zoom."""
+        if (self.selected is None or self.mode != "preview" or self.closed
+                or self.full_preview or self.full_pending_token == self.big_token):
+            return
+        index, token = self.selected, self.big_token
+        photo = self.paths[index]
+        corners = self.manual_corners.get(photo)
+        if corners is not None:
+            corners = corners.copy()
+        rotation = self.rotations.get(photo, 0)
+        self.full_pending_token = token
+        self.quality_label.set("Cargando detalle original...")
+        def load():
+            try:
+                img = final_export_preview(photo, auto_crop=self.auto_crop,
+                                           corners=corners, rotation=rotation)
+                self.big_events.put(("full", token, index, img, None))
+            except Exception as exc:
+                self.big_events.put(("full", token, index, None, str(exc)))
+        self.quick_pool.submit(load)
 
     def preview_mode(self):
-        # También debe poder apagarse mientras se carga otra hoja.
-        self.mode = "preview"
-        self._set_mode_controls()
-        if self.selected is None or self.editor_image is None:
-            return
-        from tkinter import messagebox
-        photo = self.paths[self.selected]
-        quad = None
-        if self.dirty or photo in self.manual_corners:
-            try:
-                quad = validated_photo_corners(self.points, self.full_size).copy()
-            except ValueError as exc:
-                messagebox.showwarning("Recorte incorrecto", str(exc), parent=self.window)
-                return
         self.mode = "preview"
         self._set_mode_controls()
         self.big_token += 1
-        token, index = self.big_token, self.selected
-        self.board.delete("all")
-        self.board.create_text(25, 25, text="Cargando...", fill="white", anchor="nw")
-        self.quality_label.set("")
-        warning = self.crop_warnings.get(photo) if photo not in self.manual_corners else None
-        self.status.set("Recorte sin guardar" if self.dirty else
-                        f"⚠ {warning}. Comprueba el recorte." if warning else "")
-        def load():
-            try:
-                im = final_export_preview(photo,
-                    auto_crop=self.auto_crop or quad is not None,
-                    corners=quad, rotation=self.rotations.get(photo, 0))
-                self.big_events.put((token, index, im, None))
-            except Exception as exc:
-                self.big_events.put((token, index, None, str(exc)))
-        self.pool.submit(load)
+        self.full_pending_token = None
+        self._show_quick_preview()
 
     def poll_large(self):
         if self.closed:
             return
         while True:
             try:
-                token, index, im, error = self.big_events.get_nowait()
+                kind, token, index, im, error = self.big_events.get_nowait()
             except queue.Empty:
                 break
             if token != self.big_token or index != self.selected or self.mode != "preview":
@@ -354,16 +405,28 @@ class ReviewWorkspace(PhotoMatrix):
                     im.close()
                 continue
             if error:
-                self.status.set(f"No se pudo mostrar la calidad final: {error}")
-                self.quality_label.set("")
-            else:
-                if self.big_image is not None:
-                    self.big_image.close()
+                if kind == "full":
+                    self.full_pending_token = None
+                self.status.set(f"No se pudo cargar: {error}")
+                if im is not None:
+                    im.close()
+                continue
+            if kind == "full":
+                old = self.big_image
+                if old is not None and not self.fit:
+                    self.scale *= old.width / im.width
                 self.big_image = im
-                self.fit = True
-                self.pan_x = self.pan_y = 0
+                self.full_preview = True
+                self.full_pending_token = None
+                if old is not None:
+                    old.close()
                 self._draw_big()
-        self.window.after(100, self.poll_large)
+            else:
+                if self.full_preview:
+                    im.close()
+                else:
+                    self._accept_quick_preview(im)
+        self.window.after(70, self.poll_large)
 
     def _draw_big(self):
         if self.closed or self.mode != "preview" or self.big_image is None:
@@ -387,7 +450,8 @@ class ReviewWorkspace(PhotoMatrix):
         self.board.delete("all")
         self.board.create_image(max(0, (width-size[0])//2), max(0, (height-size[1])//2),
                                 anchor="nw", image=self.big_photo)
-        self.quality_label.set(resolution_info(image, scale))
+        self.quality_label.set(
+            resolution_info(image, scale) if self.full_preview else "Vista rápida · zoom para detalle real")
 
     def fit_zoom(self):
         self.fit = True
@@ -401,6 +465,7 @@ class ReviewWorkspace(PhotoMatrix):
         self.scale = max(.15, min(5.0, float(value)))
         self.pan_x = self.pan_y = 0
         self._draw_big()
+        self._request_full_preview()
 
     def zoom_by(self, factor, anchor=None):
         """Aproximar alrededor del ratón, manteniendo la zona inspeccionada."""
@@ -424,6 +489,7 @@ class ReviewWorkspace(PhotoMatrix):
         self.fit = False
         self.scale = next_scale
         self._draw_big()
+        self._request_full_preview()
 
     def _scroll(self, sign):
         if self.mode == "preview":
@@ -500,6 +566,7 @@ class ReviewWorkspace(PhotoMatrix):
         if path is None:
             return
         index = self.selected
+        self.discard_quick_preview(self.paths[index])
         self.on_replace(index, path)
         self.paths[index] = path
         self.saved_indices.discard(index)
