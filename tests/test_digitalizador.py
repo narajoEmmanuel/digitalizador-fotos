@@ -30,6 +30,38 @@ class DigitalizadorTests(unittest.TestCase):
             exif[36881] = offset
         Image.new("RGB", (400, 550), color).save(path, exif=exif)
 
+    def test_metadatos_exif_reutilizados(self):
+        import digitalizador
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "fecha.jpg"
+            self.photo_with_capture(path, "2026:11:01 15:34:55")
+            digitalizador._capture_datetime_cached.cache_clear()
+            with mock.patch("digitalizador.Image.open", wraps=Image.open) as reader:
+                self.assertEqual(capture_datetime(path), capture_datetime(path))
+            self.assertEqual(reader.call_count, 1)
+
+    def test_deteccion_de_varias_imagenes_sin_recalcular(self):
+        import digitalizador
+        with tempfile.TemporaryDirectory() as d:
+            photos = []
+            for n in range(3):
+                path = Path(d) / f"foto{n}.jpg"
+                arr = np.full((680, 510, 3), (28, 82, 133), dtype=np.uint8)
+                arr[85:595, 70:440] = (238, 232, 220)
+                Image.fromarray(arr).save(path)
+                photos.append(path)
+            digitalizador._cached_auto_corners.cache_clear()
+            with mock.patch("digitalizador.find_document_corners",
+                            wraps=digitalizador.find_document_corners) as detector:
+                for photo in photos:
+                    automatic_page_corners(photo)
+                calls = detector.call_count
+                for photo in photos:
+                    automatic_page_corners(photo)
+            self.assertGreaterEqual(calls, len(photos))
+            self.assertEqual(detector.call_count, calls)
+            digitalizador._cached_auto_corners.cache_clear()
+
     def test_orden_por_captura_no_por_nombre_ni_fecha_de_descarga(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
