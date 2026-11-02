@@ -27,7 +27,7 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 - **Rueda del mouse:** zoom alrededor del puntero. **Arrastrar:** mover la imagen ampliada. **Doble clic:** encajar la página.
 - La vista de calidad presenta las dimensiones finales en píxeles y el zoom. A **100 %**, un píxel de imagen corresponde a un píxel de pantalla.
 - **Activar esquinas / Desactivar esquinas:** interruptor global del revisor. Al activarlo, todas las páginas que selecciones muestran los cuatro puntos hasta que lo desactives. No asigna las mismas esquinas a todas; cada fotografía tiene su propio recorte.
-- **Detectar:** recalcula el contorno de la página actual. **Guardar recorte:** guarda solo las esquinas de esa hoja sin desactivar la herramienta, para continuar con otras. Al desactivar las esquinas, aparece la imagen final con zoom.
+- **Detectar / Optimizar:** la primera pulsación vuelve a localizar la hoja; la segunda busca mejorar cada borde comparando el contraste entre papel y fondo, sin repetir exactamente el cálculo anterior. Si no encuentra una mejora segura, mantiene los puntos existentes. Se realiza en segundo plano y solo afecta a la hoja seleccionada. **Guardar recorte** confirma las esquinas para el PDF; hasta entonces los cambios son provisionales.
 - **Sustituir:** cambia la fotografía seleccionada. **+ Antes** y **+ Después:** insertan una página en el lugar indicado.
 - **↶ 90° / 90° ↷:** giran únicamente la página seleccionada a izquierda o derecha. La miniatura, vista ampliada y PDF final respetan el giro. La fotografía original y las esquinas guardadas no cambian. Puedes pulsar dos veces para girar 180°, o deshacer girando al lado contrario.
 
@@ -84,4 +84,4 @@ Uso opcional por consola:
 - `vistas.py`: utilidades de visualización.
 - `tests/`: pruebas automatizadas.
 
-**Versión actual: 1.13.**
+**Versión actual: 1.14.**
