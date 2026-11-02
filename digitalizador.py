@@ -972,8 +972,10 @@ def gui_main():
             self.learning_generation += 1
             generation = self.learning_generation
             self.learn_button.state(["disabled"])
+            self.detection_paused.set()
             self.make_button.state(["disabled"])
             self.optimize_all_button.state(["disabled"])
+            self.learn_button.state(["disabled"])
             self.folder_button.state(["disabled"])
             review = self.active_review
             if review is not None and not review.closed:
@@ -1635,6 +1637,7 @@ def gui_main():
                     if generation != self.learning_generation or not self.learning_busy:
                         continue
                     self.learning_busy = False
+                    self.detection_paused.clear()
                     self.learn_button.state(["!disabled"])
                     self.folder_button.state(["!disabled"])
                     self.make_button.state(["!disabled"])
@@ -1676,6 +1679,7 @@ def gui_main():
                         self.detection_total = total
                         self.detection_warnings = failed
                         self.optimize_all_button.state(["!disabled"])
+                        self.learn_button.state(["!disabled"])
                         self.make_button.state(["!disabled"])
                         self.folder_button.state(["!disabled"])
                         if review is not None and not review.closed:
