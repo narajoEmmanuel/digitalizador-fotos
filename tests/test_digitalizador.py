@@ -380,7 +380,7 @@ class DigitalizadorTests(unittest.TestCase):
         gui = inspect.getsource(digitalizador.gui_main)
         self.assertNotIn("self.crop_check", gui)
         self.assertNotIn("self.auto_crop.get()", gui)
-        self.assertNotIn("Recorte automático\", variable=", gui)
+        self.assertNotIn('text="Recorte automático"', gui)
         self.assertIn("should_crop = True", gui)
         self.assertIn("auto_crop=True", gui)
         self.assertIn("self.optimize_all_button", gui)
