@@ -143,6 +143,30 @@ class ReviewWorkspace(PhotoMatrix):
                             + ". Ajuste manual sin guardar conservado.")
         self._set_mode_controls()
 
+    def set_batch_optimization_progress(self, done: int, total: int):
+        """La matriz muestra el progreso global, su botón sigue siendo individual."""
+        if not self.closed:
+            self.detection_info.set(
+                f"Optimizando lote: {done}/{total}" if done < total
+                else f"Optimización completa: {total}/{total}")
+
+    def refresh_auto_results(self):
+        """Mostrar nuevos recortes conservando la edición actual sin guardar."""
+        if self.closed:
+            return
+        self.detect_steps.clear()
+        self.invalidate_all_previews()
+        if self.selected is None:
+            return
+        if self.mode == "preview":
+            self.preview_mode()
+        elif not self.dirty and self.paths[self.selected] not in self.manual_corners:
+            self.editor_loaded_index = None
+            super().choose(self.selected)
+        else:
+            self.status.set("Optimización del lote finalizada. Se conserva el recorte manual.")
+        self._set_mode_controls()
+
     def set_detection_progress(self, done: int, total: int):
         """Indicador breve que desaparece cuando el lote quedó analizado."""
         if total and done < total:
