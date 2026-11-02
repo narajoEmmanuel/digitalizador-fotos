@@ -78,6 +78,77 @@ class ReviewFlowTests(unittest.TestCase):
         self.assertEqual(panel.mode, "preview")
         panel._set_mode_controls.assert_called_once_with()
 
+    def test_modo_esquinas_persiste_entre_hojas(self):
+        from unittest import mock
+        from revisor import ReviewWorkspace
+        from revisor_base import PhotoMatrix
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.selected = 0
+        panel.paths = [Path("pagina1.jpg"), Path("pagina2.jpg")]
+        panel.dirty = False
+        panel.corners_enabled = True
+        panel.mode = "edit"
+        panel.big_token = 0
+        panel.big_image = None
+        panel._set_mode_controls = mock.Mock()
+        with mock.patch.object(PhotoMatrix, "choose") as original_choose:
+            panel.choose(1)
+        self.assertEqual(panel.mode, "edit")
+        self.assertTrue(panel.corners_enabled)
+        original_choose.assert_called_once_with(1)
+
+    def test_interruptor_activar_y_desactivar(self):
+        from unittest import mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.corners_enabled = False
+        panel.edit_mode = mock.Mock()
+        panel.preview_mode = mock.Mock()
+        panel._pending = mock.Mock(return_value=True)
+        panel.toggle_corners()
+        self.assertTrue(panel.corners_enabled)
+        panel.edit_mode.assert_called_once_with()
+        panel.toggle_corners()
+        self.assertFalse(panel.corners_enabled)
+        panel.preview_mode.assert_called_once_with()
+
+    def test_interruptor_no_descarta_recorte_si_cancela(self):
+        from unittest import mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.corners_enabled = True
+        panel._pending = mock.Mock(return_value=False)
+        panel.preview_mode = mock.Mock()
+        panel.toggle_corners()
+        self.assertTrue(panel.corners_enabled)
+        panel.preview_mode.assert_not_called()
+
+    def test_guardar_recorte_mantiene_herramienta_activa(self):
+        from unittest import mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.paths = [Path("pagina.jpg")]
+        panel.selected = 0
+        panel.full_size = (200, 300)
+        panel.points = np.float32([[10, 10], [190, 10], [190, 290], [10, 290]])
+        panel.corners_enabled = True
+        panel.mode = "edit"
+        panel.dirty = True
+        panel.saved_indices = set()
+        panel.on_save = mock.Mock()
+        panel.refresh_item = mock.Mock()
+        panel._highlight_selection = mock.Mock()
+        panel._set_mode_controls = mock.Mock()
+        panel.preview_mode = mock.Mock()
+        panel.status = mock.Mock()
+        panel.auto_crop = True
+        self.assertTrue(panel.save())
+        self.assertEqual(panel.mode, "edit")
+        self.assertFalse(panel.dirty)
+        panel.preview_mode.assert_not_called()
+        panel.on_save.assert_called_once()
+        self.assertIn(0, panel.saved_indices)
+
     def test_deteccion_insegura_no_mueve_las_esquinas(self):
         from unittest import mock
         from revisor import ReviewWorkspace
