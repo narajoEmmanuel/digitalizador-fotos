@@ -16,7 +16,8 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 - **Derecha (64 %):** solo la imagen procesada, sin barras ni controles que reduzcan el área de visualización. Al editar el recorte aparecen los cuatro puntos sobre la imagen.
 - **Rueda del mouse:** zoom alrededor del puntero. **Arrastrar:** mover la imagen ampliada. **Doble clic:** encajar la página.
 - La vista de calidad presenta las dimensiones finales en píxeles y el zoom. A **100 %**, un píxel de imagen corresponde a un píxel de pantalla.
-- **Editar recorte:** muestra las cuatro esquinas. **Detectar:** vuelve a calcular el contorno. **Guardar recorte:** almacena las esquinas y regresa a la imagen procesada.
+- **Activar esquinas / Desactivar esquinas:** interruptor global del revisor. Al activarlo, todas las páginas que selecciones muestran los cuatro puntos hasta que lo desactives. No asigna las mismas esquinas a todas; cada fotografía tiene su propio recorte.
+- **Detectar:** recalcula el contorno de la página actual. **Guardar recorte:** guarda solo las esquinas de esa hoja sin desactivar la herramienta, para continuar con otras. Al desactivar las esquinas, aparece la imagen final con zoom.
 - **Sustituir:** cambia la fotografía seleccionada. **+ Antes** y **+ Después:** insertan una página en el lugar indicado.
 
 El contenido de la matriz se calcula a tamaño ligero. La vista individual de calidad procede de la fotografía original y reproduce la compresión JPEG que se integrará en el PDF. La edición no modifica ni borra las fotos originales. Los cambios pendientes duran únicamente la sesión, así que exporta antes de cerrar la aplicación.
