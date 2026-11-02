@@ -63,6 +63,21 @@ def normalize_pdf_destination(selected: str) -> Path:
     return path.with_name(normalized_pdf_name(path.name))
 
 
+def build_export_destination(folder: Path, typed_name: str) -> Path:
+    """El nombre definido en la aplicación es definitivo, no el del diálogo Windows."""
+    if not folder.is_dir():
+        raise ValueError("Selecciona una carpeta de destino válida.")
+    return folder / normalized_pdf_name(typed_name)
+
+
+def export_success_text(path: Path, pages: int, uncropped: int = 0) -> str:
+    """Mensaje compacto y verificable para la confirmación de exportación."""
+    text = f"✓ PDF guardado: {path.name}\n{pages} páginas · {path.parent}"
+    if uncropped:
+        text += f"\n⚠ {uncropped} página(s) sin recorte seguro"
+    return text
+
+
 def verify_pdf_export(path: Path, expected_pages: int) -> None:
     """Revisa el PDF temporal antes de publicarlo como archivo definitivo."""
     import fitz
@@ -377,6 +392,7 @@ def gui_main():
             self.crop_loading = False
             self.latest_pdf: Path | None = None
             self.export_review = None
+            self.export_folder: Path | None = None
 
             style = ttk.Style(root)
             if "clam" in style.theme_names():
@@ -816,18 +832,19 @@ def gui_main():
             except ValueError as exc:
                 messagebox.showwarning("Nombre del PDF", str(exc), parent=dialog_parent)
                 return
-            # El diálogo debe pertenecer al revisor si se exporta desde su matriz.
-            dest = filedialog.asksaveasfilename(
-                parent=dialog_parent, title="Guardar documento PDF", initialfile=target_name,
-                defaultextension=".pdf", filetypes=[("Documento PDF", "*.pdf")],
-                initialdir=str(self.folder.parent),
+            # La carpeta se elige aparte. El nombre escrito no puede ser
+            # reemplazado por un nombre antiguo o sugerido por Windows.
+            directory = filedialog.askdirectory(
+                parent=dialog_parent, title=f"Guardar {target_name} en...",
+                initialdir=str(self.export_folder or self.folder.parent),
+                mustexist=True,
             )
-            if not dest:
+            if not directory:
                 return
             try:
-                target = normalize_pdf_destination(dest)
+                target = build_export_destination(Path(directory), self.pdf_name.get())
             except ValueError as exc:
-                messagebox.showwarning("Nombre del PDF", str(exc), parent=dialog_parent)
+                messagebox.showwarning("Destino del PDF", str(exc), parent=dialog_parent)
                 return
             if target.exists():
                 messagebox.showwarning("PDF existente",
@@ -836,10 +853,10 @@ def gui_main():
                 return
             # Refleja el nombre realmente elegido, tanto en la matriz como en inicio.
             self.pdf_name.set(target.stem)
+            self.export_folder = target.parent
             self.export_review = review
             if review is not None and not review.closed:
-                review.status.set("Exportando PDF...")
-                review.export_button.state(["disabled"])
+                review.begin_export(target, len(self.paths))
             self.busy = True
             self.folder_button.state(["disabled"])
             self.make_button.state(["disabled"])
@@ -901,7 +918,7 @@ def gui_main():
                     self.progress_text.set(f"Procesando {n} de {total}: {name}")
                     review = self.export_review
                     if review is not None and not review.closed:
-                        review.status.set(f"Exportando {n}/{total}...")
+                        review.update_export_progress(n, total)
                 elif event[0] == "done":
                     info = event[1]
                     self.latest_pdf = Path(info['file'])
@@ -910,8 +927,7 @@ def gui_main():
                     dialog_parent = (review.window if review is not None and not review.closed
                                      else self.root)
                     if review is not None and not review.closed:
-                        review.export_button.state(["!disabled"])
-                        review.status.set(f"PDF guardado: {self.latest_pdf.name}")
+                        review.finish_export(self.latest_pdf, info['pages'], len(info['uncropped']))
                     self.export_review = None
                     details = f"PDF creado con {info['pages']} páginas.\n\n{info['file']}"
                     if info["uncropped"]:
@@ -919,7 +935,10 @@ def gui_main():
                     if info["errors"]:
                         details += f"\n\n{len(info['errors'])} fotos no se pudieron incluir:\n" + "\n".join(info["errors"][:8])
                     self.progress_text.set(f"Listo: {info['pages']} páginas guardadas.")
-                    messagebox.showinfo("PDF terminado", details, parent=dialog_parent)
+                    # La matriz muestra una señal permanente de éxito,
+                    # sin un diálogo modal que pueda ocultarse detrás.
+                    if review is None or review.closed:
+                        messagebox.showinfo("PDF terminado", details, parent=dialog_parent)
                 elif event[0] == "failed":
                     self.reset_controls()
                     self.progress_text.set("No se pudo crear el PDF.")
@@ -927,8 +946,7 @@ def gui_main():
                     dialog_parent = (review.window if review is not None and not review.closed
                                      else self.root)
                     if review is not None and not review.closed:
-                        review.export_button.state(["!disabled"])
-                        review.status.set("Error al exportar PDF.")
+                        review.fail_export(event[1])
                     self.export_review = None
                     messagebox.showerror("Error al generar PDF", event[1], parent=dialog_parent)
             self.root.after(100, self.poll_events)

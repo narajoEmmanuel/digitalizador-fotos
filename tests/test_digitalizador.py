@@ -11,7 +11,8 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from digitalizador import (capture_datetime, create_pdf, discover_images, prepare_page,
-                          normalize_pdf_destination, normalized_pdf_name, verify_pdf_export)
+                          normalize_pdf_destination, normalized_pdf_name, verify_pdf_export,
+                          build_export_destination, export_success_text)
 from recorte import detectar_hoja
 
 
@@ -143,6 +144,19 @@ class DigitalizadorTests(unittest.TestCase):
             verify_pdf_export(selected, 1)
             with fitz.open(selected) as pdf:
                 self.assertEqual(pdf.metadata["title"], selected.stem)
+
+    def test_nombre_escrito_es_el_nombre_final_y_solo_se_elije_carpeta(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder = Path(d)
+            wanted = "Documentos de Alemán y Francés 2026"
+            destination = build_export_destination(folder, wanted)
+            self.assertEqual(destination.parent, folder)
+            self.assertEqual(destination.name, wanted + ".pdf")
+            self.assertEqual(destination.suffix, ".pdf")
+            self.assertEqual(export_success_text(destination, 8),
+                             f"✓ PDF guardado: {wanted}.pdf\\n8 páginas · {folder}".replace("\\n", "\n"))
+            with self.assertRaisesRegex(ValueError, "carpeta"):
+                build_export_destination(folder / "no_existe", wanted)
 
     def test_pdf_no_permite_sobrescribir_el_original(self):
         with tempfile.TemporaryDirectory() as d:

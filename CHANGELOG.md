@@ -1,5 +1,14 @@
 # Historial de cambios
 
+## 1.10 (2026-11-01)
+
+- Único nombre de archivo, definido por la persona en la aplicación. Al exportar, Windows solicita solamente la carpeta.
+- Estado persistente en la matriz: barra de progreso, recuento de páginas y aviso "✓ PDF guardado" con nombre y ruta.
+- Barra al 95 % hasta completar validación de páginas; solo se muestra 100 % tras guardar correctamente.
+- Botón **Abrir PDF** al finalizar. Se diferencian errores y advertencias de recortes inseguros.
+- Se impide exportar dos veces simultáneamente sin perder la confirmación del archivo anterior.
+
+
 ## 1.9.1 (2026-11-01)
 
 - Corrección de controles ocultos en la matriz: ahora se reserva espacio en el panel izquierdo antes de calcular el tamaño de las miniaturas.

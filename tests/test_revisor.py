@@ -200,6 +200,27 @@ class ReviewFlowTests(unittest.TestCase):
             self.assertLess(image.height, 490)
             image.close()
 
+    def test_confirmacion_exportacion_visible_y_abrir_pdf(self):
+        from unittest.mock import Mock
+        from revisor import ReviewWorkspace
+        with tempfile.TemporaryDirectory() as d:
+            target = Path(d) / "Documento final.pdf"
+            target.write_bytes(b"pdf simulated")
+            panel = ReviewWorkspace.__new__(ReviewWorkspace)
+            panel.export_progress = Mock()
+            panel.export_button = Mock()
+            panel.export_message_label = Mock()
+            panel.export_message = Mock()
+            panel.open_pdf_button = Mock()
+            panel.window = Mock()
+            panel.finish_export(target, 19)
+            self.assertEqual(panel.exported_file, target)
+            self.assertIn("19 páginas", panel.export_message.set.call_args.args[0])
+            panel.open_pdf_button.pack.assert_called_once()
+            with __import__("unittest").mock.patch("os.startfile", create=True) as run:
+                panel.open_exported_pdf()
+                run.assert_called_once_with(str(target))
+
     def test_miniaturas_respetan_monitores_pequenos(self):
         from revisor_base import matrix_thumbnail_size
         small = matrix_thumbnail_size(800, 600)

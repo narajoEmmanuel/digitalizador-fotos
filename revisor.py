@@ -90,13 +90,77 @@ class ReviewWorkspace(PhotoMatrix):
             ttk.Entry(name_row, textvariable=self.pdf_name).pack(
                 side="left", fill="x", expand=True)
         self.export_button = ttk.Button(footer, text="Exportar PDF", command=self.export)
-        # Exportar ocupa su propia fila, visible incluso en ventanas estrechas.
         self.export_button.pack(fill="x", pady=(4, 0))
+        # Área independiente: no se borra al seleccionar otra miniatura.
+        self.export_message = self.tk.StringVar(value="")
+        self.export_message_label = ttk.Label(
+            footer, textvariable=self.export_message, wraplength=310)
+        self.export_message_label.pack(fill="x", pady=(5, 0))
+        self.export_progress = ttk.Progressbar(
+            footer, orient="horizontal", mode="determinate", maximum=100)
+        self.export_progress.pack(fill="x", pady=(4, 0))
+        self.export_progress.pack_forget()
+        self.exported_file = None
+        self.open_pdf_button = ttk.Button(footer, text="Abrir PDF", command=self.open_exported_pdf)
         self._set_mode_controls()
         self.status.set("")
         if self.paths:
             self.choose(0)
         self.window.after(100, self.poll_large)
+
+    def begin_export(self, target: Path, total: int):
+        self.exported_file = None
+        self.open_pdf_button.pack_forget()
+        self.export_button.state(["disabled"])
+        self.export_message_label.configure(foreground="#344054")
+        self.export_message.set(f"Exportando {target.name} · 0/{total}")
+        self.export_progress.configure(mode="indeterminate")
+        self.export_progress.pack(fill="x", pady=(4, 0))
+        self.export_progress.start(12)
+
+    def update_export_progress(self, done: int, total: int):
+        self.export_progress.stop()
+        self.export_progress.configure(mode="determinate")
+        # Mantener 95 % hasta que se valide y guarde el archivo.
+        self.export_progress["value"] = 95 * done / max(1, total)
+        self.export_message.set(
+            f"Verificando PDF... {done}/{total}" if done >= total
+            else f"Exportando PDF · {done}/{total}")
+
+    def finish_export(self, path: Path, pages: int, uncropped: int = 0):
+        from digitalizador import export_success_text
+        self.export_progress.stop()
+        self.export_progress.configure(mode="determinate")
+        self.export_progress["value"] = 100
+        self.exported_file = Path(path)
+        self.export_button.state(["!disabled"])
+        self.export_message_label.configure(
+            foreground="#986300" if uncropped else "#18723D")
+        self.export_message.set(export_success_text(Path(path), pages, uncropped))
+        self.open_pdf_button.pack(fill="x", pady=(4, 0))
+        self.window.bell()
+
+    def fail_export(self, reason: str):
+        self.export_progress.stop()
+        self.export_progress.pack_forget()
+        self.open_pdf_button.pack_forget()
+        self.exported_file = None
+        self.export_button.state(["!disabled"])
+        self.export_message_label.configure(foreground="#B42318")
+        self.export_message.set(f"✗ No se pudo exportar: {reason}")
+
+    def open_exported_pdf(self):
+        import os
+        from tkinter import messagebox
+        path = self.exported_file
+        if path is None or not path.is_file():
+            messagebox.showerror("PDF no disponible", "No se encuentra el PDF exportado.",
+                                 parent=self.window)
+            return
+        try:
+            os.startfile(str(path))
+        except OSError as exc:
+            messagebox.showerror("No se pudo abrir", str(exc), parent=self.window)
 
     def _set_mode_controls(self):
         """El interruptor permanece visible y afecta a todas las páginas."""
