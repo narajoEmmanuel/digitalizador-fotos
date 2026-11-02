@@ -103,6 +103,9 @@ class ReviewWorkspace(PhotoMatrix):
                 side="left", fill="x", expand=True)
         self.export_button = ttk.Button(footer, text="Exportar PDF", command=self.export)
         self.export_button.pack(fill="x", pady=(4, 0))
+        self.detection_info = self.tk.StringVar(value="")
+        ttk.Label(self.controls, textvariable=self.detection_info).pack(
+            fill="x", before=self.status_widget)
         # Área independiente: no se borra al seleccionar otra miniatura.
         self.export_message = self.tk.StringVar(value="")
         self.export_message_label = ttk.Label(
@@ -119,6 +122,13 @@ class ReviewWorkspace(PhotoMatrix):
         if self.paths:
             self.choose(0)
         self.window.after(100, self.poll_large)
+
+    def set_detection_progress(self, done: int, total: int):
+        """Indicador breve que desaparece cuando el lote quedó analizado."""
+        if total and done < total:
+            self.detection_info.set(f"Preparando esquinas: {done}/{total}")
+        else:
+            self.detection_info.set("")
 
     def begin_export(self, target: Path, total: int):
         self.exported_file = None
