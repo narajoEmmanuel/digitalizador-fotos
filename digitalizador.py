@@ -24,6 +24,8 @@ from pathlib import Path
 from typing import Callable
 
 from recorte import detectar_hoja, ordenar_esquinas, refinar_esquinas, geometria_hoja_valida
+from aprendizaje import (apply_learning, make_example, save_examples,
+                         fingerprint_photo, read_examples)
 
 import cv2
 import numpy as np
@@ -312,8 +314,8 @@ AUTOMATIC_DETECTION_SIDE = 1600
 
 
 @lru_cache(maxsize=4096)
-def _cached_auto_corners(photo: Path, modified_ns: int, size_bytes: int):
-    """Detector a la misma escala para matriz, zoom y exportación."""
+def _cached_base_corners(photo: Path, modified_ns: int, size_bytes: int):
+    """Esquinas originales sin aprendizaje, base estable para evaluar correcciones."""
     reduced, full_size = preview_image(photo, AUTOMATIC_DETECTION_SIDE)
     try:
         image = np.asarray(reduced)
@@ -345,6 +347,65 @@ def _cached_auto_corners(photo: Path, modified_ns: int, size_bytes: int):
         return corners.astype(np.float32), None
     finally:
         reduced.close()
+
+
+@lru_cache(maxsize=4096)
+def _cached_auto_corners(photo: Path, modified_ns: int, size_bytes: int):
+    """Detector original y calibración optativa aprendida al pulsar el botón."""
+    raw, issue = _cached_base_corners(photo, modified_ns, size_bytes)
+    if raw is None or not read_examples():
+        return (raw.copy() if raw is not None else None), issue
+    preview, full_size = preview_image(photo, AUTOMATIC_DETECTION_SIDE)
+    try:
+        image = np.asarray(preview)
+        h, w = image.shape[:2]
+        fw, fh = full_size
+        reduced = raw * np.float32([w/fw, h/fh])
+        learned = apply_learning(image, reduced)
+        if learned is None:
+            return raw.copy(), issue
+        return (learned*np.float32([fw/w, fh/h])).astype(np.float32), issue
+    finally:
+        preview.close()
+
+
+def learn_manual_corners(corrections: dict[Path, np.ndarray],
+                         progress: Callable[[int, int], None] | None = None):
+    """Construir ejemplos de ajustes explícitamente guardados por el usuario."""
+    examples = []
+    skipped = 0
+    entries = list(corrections.items())
+    for count, (path, corrected) in enumerate(entries, 1):
+        try:
+            path = Path(path)
+            stat = path.stat()
+            base, _ = _cached_base_corners(path, stat.st_mtime_ns, stat.st_size)
+            if base is None:
+                skipped += 1
+                continue
+            preview, full_size = preview_image(path, AUTOMATIC_DETECTION_SIDE)
+            try:
+                example = make_example(
+                    np.asarray(preview), base, corrected, full_size,
+                    fingerprint_photo(path))
+                if example is not None:
+                    examples.append(example)
+                else:
+                    skipped += 1
+            finally:
+                preview.close()
+        except (OSError, ValueError, cv2.error):
+            skipped += 1
+        finally:
+            if progress:
+                progress(count, len(entries))
+    added, total = save_examples(examples)
+    if added:
+        # Cambiar el modelo sólo después de guardar. Conservar la detección
+        # base acelera una siguiente recalibración y evita aprender dos veces.
+        _cached_auto_corners.cache_clear()
+    return {"added": added, "total": total, "skipped": skipped,
+            "considered": len(entries)}
 
 
 _detection_lock = threading.Lock()
@@ -716,6 +777,9 @@ def gui_main():
             self.detection_pool = ThreadPoolExecutor(max_workers=1)
             self.detection_paused = threading.Event()
             self.import_pool = ThreadPoolExecutor(max_workers=1)
+            self.learning_pool = ThreadPoolExecutor(max_workers=1)
+            self.learning_busy = False
+            self.learning_generation = 0
             self.import_generation = 0
             self.import_loading = False
             self.detection_generation = 0
@@ -767,6 +831,11 @@ def gui_main():
                 command=self.optimize_all_pages)
             self.optimize_all_button.pack(side="left", padx=(12, 0))
             self.optimize_all_button.state(["disabled"])
+            self.learn_button = ttk.Button(
+                crop_row, text="Aprender de mis ajustes", style="Small.TButton",
+                command=self.learn_from_manual_corrections)
+            self.learn_button.pack(side="left", padx=(12, 0))
+            self.learn_button.state(["disabled"])
             self.manual_button = ttk.Button(crop_row, text="Editar esquinas", style="Small.TButton", command=self.adjust_corners)
             self.manual_button.pack(side="right")
             self.manual_button.state(["disabled"])
@@ -874,6 +943,7 @@ def gui_main():
             self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
             self.matrix_btn.state(["!disabled"] if self.paths else ["disabled"])
             self.optimize_all_button.state(["!disabled"] if self.paths else ["disabled"])
+            self.learn_button.state(["!disabled"] if self.paths else ["disabled"])
             if self.paths:
                 self._preload_detections(list(self.paths), self.detection_generation)
                 self.listbox.selection_set(0)
@@ -883,6 +953,43 @@ def gui_main():
                 self.set_preview(self.preview_result, None, "Procesado")
                 messagebox.showinfo("No hay fotografías", "Esta carpeta no contiene fotos JPG, PNG o HEIC compatibles.")
 
+        def learn_from_manual_corrections(self):
+            """Sólo aquí se aprende; guardar esquinas no entrena ni escribe modelo."""
+            if (self.busy or self.import_loading or self.batch_optimizing
+                    or self.learning_busy or not self.paths):
+                return
+            if not self.manual_corners:
+                self.progress_text.set(
+                    "Guarda primero al menos un recorte manual. No hay ajustes que aprender.")
+                return
+            # La edición todavía abierta no se utiliza hasta pulsar Guardar recorte.
+            corrections = {photo: corners.copy()
+                           for photo, corners in self.manual_corners.items()
+                           if photo in self.paths}
+            if not corrections:
+                return
+            self.learning_busy = True
+            self.learning_generation += 1
+            generation = self.learning_generation
+            self.learn_button.state(["disabled"])
+            self.make_button.state(["disabled"])
+            self.optimize_all_button.state(["disabled"])
+            self.folder_button.state(["disabled"])
+            review = self.active_review
+            if review is not None and not review.closed:
+                review.export_button.state(["disabled"])
+            self.progress.configure(mode="determinate", maximum=100, value=0)
+            self.progress_text.set(f"Aprendiendo: 0/{len(corrections)}")
+            def worker():
+                try:
+                    result = learn_manual_corners(
+                        corrections, progress=lambda n, total:
+                        self.events.put(("learning_progress", generation, n, total)))
+                    self.events.put(("learning_done", generation, result, None))
+                except Exception as exc:
+                    self.events.put(("learning_done", generation, None, str(exc)))
+            self.learning_pool.submit(worker)
+
         def optimize_all_pages(self):
             """Optimización adicional de todo el lote, con progreso visible.
 
@@ -890,7 +997,7 @@ def gui_main():
             mantiene prioridad sobre el detector automático.
             """
             if (self.busy or self.import_loading or self.batch_optimizing
-                    or not self.paths):
+                    or self.learning_busy or not self.paths):
                 return
             self.detection_generation += 1
             generation = self.detection_generation
@@ -1373,6 +1480,9 @@ def gui_main():
             return normalized_pdf_name(value)
 
         def make_pdf(self, review=None):
+            if self.learning_busy:
+                self.progress_text.set("Termina el aprendizaje antes de exportar el PDF.")
+                return
             if self.batch_optimizing:
                 message = "La optimización del lote sigue en curso. Exporta cuando termine."
                 if review is not None and not review.closed:
@@ -1423,6 +1533,7 @@ def gui_main():
             self.matrix_btn.state(["disabled"])
             self.name_entry.state(["disabled"])
             self.optimize_all_button.state(["disabled"])
+            self.learn_button.state(["disabled"])
             self.progress.configure(mode="determinate", maximum=100, value=0)
             self.progress_text.set(f"Preparando {len(self.paths)} páginas...")
             paths = list(self.paths)
@@ -1501,6 +1612,42 @@ def gui_main():
                             elif result:
                                 self._show_preview(key[0], *result)
                                 self._prefetch_photo_neighbors(current[0])
+                elif event[0] == "learning_progress":
+                    _, generation, done, total = event
+                    if generation == self.learning_generation and self.learning_busy:
+                        self.progress.configure(value=100*done/max(1, total))
+                        self.progress_text.set(
+                            f"Aprendiendo de mis ajustes: {done}/{total} · "
+                            f"{round(100*done/max(1, total))} %")
+                elif event[0] == "learning_done":
+                    _, generation, result, failure = event
+                    if generation != self.learning_generation or not self.learning_busy:
+                        continue
+                    self.learning_busy = False
+                    self.learn_button.state(["!disabled"])
+                    self.folder_button.state(["!disabled"])
+                    self.make_button.state(["!disabled"])
+                    self.optimize_all_button.state(["!disabled"])
+                    review = self.active_review
+                    if review is not None and not review.closed:
+                        review.export_button.state(["!disabled"])
+                    if failure:
+                        self.progress_text.set("No se pudo guardar el aprendizaje: " + failure)
+                    else:
+                        self.progress.configure(value=100)
+                        self.progress_text.set(
+                            f"Aprendizaje local: {result['added']} nuevos ejemplos, "
+                            f"{result['total']} acumulados."
+                            + (f" {result['skipped']} no se pudieron usar."
+                               if result['skipped'] else ""))
+                        if result["added"]:
+                            self.preview_revision += 1
+                            self.preview_cache.clear()
+                            self.preview_pending.clear()
+                            self.preview_token += 1
+                            self.refresh_preview()
+                            if review is not None and not review.closed:
+                                review.refresh_auto_results()
                 elif event[0] == "batch_optimize":
                     _, generation, done, total, improved, failed, skipped = event
                     if generation != self.detection_generation or not self.batch_optimizing:
@@ -1608,6 +1755,8 @@ def gui_main():
             self.detection_generation += 1
             if self.active_review is not None and not self.active_review.closed:
                 self.active_review.close()
+            self.learning_generation += 1
+            self.learning_pool.shutdown(wait=False, cancel_futures=True)
             self.import_pool.shutdown(wait=False, cancel_futures=True)
             self.detection_pool.shutdown(wait=False, cancel_futures=True)
             self.preview_pool.shutdown(wait=False, cancel_futures=True)
@@ -1622,7 +1771,10 @@ def gui_main():
             self.matrix_btn.state(["!disabled"] if self.paths else ["disabled"])
             self.name_entry.state(["!disabled"])
             self.optimize_all_button.state(
-                ["disabled"] if not self.paths or self.batch_optimizing else ["!disabled"])
+                ["disabled"] if not self.paths or self.batch_optimizing
+                or self.learning_busy else ["!disabled"])
+            self.learn_button.state(
+                ["disabled"] if not self.paths or self.learning_busy else ["!disabled"])
 
     root = tk.Tk()
     DigitalizadorApp(root)
