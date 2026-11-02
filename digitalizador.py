@@ -447,6 +447,37 @@ def rotate_final_page(image: Image.Image, degrees: int) -> Image.Image:
     return rotated
 
 
+def optimize_manual_page_corners(photo: Path, corners: np.ndarray,
+                                 max_passes: int = 2) -> np.ndarray | None:
+    """Optimiza puntos del editor principal, no los de la matriz ni su caché.
+
+    Se trabaja a 1600px, igual que el detector refinado. Retorna coordenadas
+    completas solo si las esquinas realmente mejoran y tienen geometría segura.
+    La fotografía original nunca se escribe y guardar sigue siendo explícito.
+    """
+    preview, full_size = preview_image(Path(photo), AUTOMATIC_DETECTION_SIDE)
+    try:
+        frame = np.asarray(preview)
+        h, w = frame.shape[:2]
+        full_w, full_h = full_size
+        original = ordenar_esquinas(np.asarray(corners, dtype=np.float32))
+        initial = original * np.float32([w / full_w, h / full_h])
+        if not safe_auto_geometry(initial, w, h):
+            candidate = find_document_corners(frame)
+            if candidate is None or not safe_auto_geometry(candidate, w, h):
+                return None
+            initial = ordenar_esquinas(candidate)
+        refined = refine_automatic_corners(frame, initial, max_passes=max_passes)
+        if not safe_auto_geometry(refined, w, h):
+            return None
+        full = refined * np.float32([full_w / w, full_h / h])
+        if np.max(np.linalg.norm(full-original, axis=1)) < 1.5:
+            return None
+        return full.astype(np.float32)
+    finally:
+        preview.close()
+
+
 def preview_pair(photo: Path, auto_crop: bool, manual_corners: np.ndarray | None,
                  rotation: int = 0):
     """Miniatura con la misma geometría que el PDF real."""
@@ -664,6 +695,10 @@ def gui_main():
             self.folder: Path | None = None
             self.paths: list[Path] = []
             self.manual_corners: dict[Path, np.ndarray] = {}
+            self.crop_loading = False
+            self.crop_editor_token = 0
+            self.crop_popup = None
+            self.crop_apply_optimization = None
             self.rotations: dict[Path, int] = {}
             self.pdf_name = tk.StringVar(value="")
             self.previous_folder_name: str | None = None
@@ -809,6 +844,7 @@ def gui_main():
             self.folder = chosen_folder
             self.paths = chosen_paths
             self.detection_generation += 1
+            self.crop_editor_token += 1
             self.detection_done = 0
             self.detection_total = len(chosen_paths)
             self.detection_warnings = 0
@@ -1143,13 +1179,195 @@ def gui_main():
                     self._submit_preview(-1, key)
 
         def adjust_corners(self):
-            """Abrir esta hoja en el mismo editor de la matriz, sin detector duplicado."""
-            if self.busy or self.import_loading or not self.paths:
+            """Carga la foto para ajustar esquinas sin bloquear el hilo gráfico."""
+            if (self.busy or self.import_loading or self.batch_optimizing
+                    or not self.paths or self.crop_loading):
                 return
-            selection = self.listbox.curselection()
-            if not selection:
+            if self.crop_popup is not None and self.crop_popup.winfo_exists():
+                self.crop_popup.lift()
                 return
-            self.open_matrix(focus_index=selection[0], edit_corners=True)
+            # Continuar con el editor principal sin abrir la matriz.
+                return
+            selected = self.listbox.curselection()
+            if not selected:
+                return
+            photo = self.paths[selected[0]]
+            self.crop_loading = True
+            self.crop_editor_token += 1
+            token = self.crop_editor_token
+            self.manual_button.state(["disabled"])
+            self.preview_status.set(f"Abriendo ajuste de esquinas de {photo.name}...")
+            # Leer dimensiones de Tk solo desde el hilo gráfico.
+            screen_w = self.root.winfo_screenwidth()
+            screen_h = self.root.winfo_screenheight()
+            limit = max(280, min(840, screen_w - 150, screen_h - 245))
+
+            def worker():
+                try:
+                    # La lectura y el redimensionado de HEIC ocurren fuera de Tk.
+                    preview, size = preview_image(photo, limit)
+                    detection = find_document_corners(np.asarray(preview))
+                    self.events.put(('crop_ready', token, photo, preview, size, detection, None))
+                except Exception as exc:
+                    self.events.put(('crop_ready', token, photo, None, None, None, str(exc)))
+
+            self.preview_pool.submit(worker)
+
+        def show_crop_editor(self, photo, preview, full_size, detected_small, token):
+            """La interfaz Tk y su imagen se construyen únicamente en el hilo principal."""
+            w, h = full_size
+            screen_w = self.root.winfo_screenwidth()
+            screen_h = self.root.winfo_screenheight()
+            # Reserva espacio para encabezado, controles, barras de Windows
+            # y los cuatro tiradores, incluso con escalado de pantalla.
+            max_width = max(240, screen_w - 150)
+            max_height = max(240, screen_h - 245)
+            if preview.width > max_width or preview.height > max_height:
+                preview.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+            width, height = preview.size
+            ratio_x, ratio_y = width / w, height / h
+            img = ImageTk.PhotoImage(preview)
+            detected = (detected_small / np.float32([ratio_x, ratio_y])
+                        if detected_small is not None else None)
+            preview.close()
+            initial = self.manual_corners.get(photo)
+            if initial is None:
+                initial = detected
+            if initial is None:
+                initial = np.float32([[w*.05, h*.05], [w*.95, h*.05],
+                                     [w*.95, h*.95], [w*.05, h*.95]])
+            points = (ordenar_esquinas(initial) * np.float32([ratio_x, ratio_y])).tolist()
+            popup = tk.Toplevel(self.root)
+            self.crop_popup = popup
+            popup.title(f"Ajustar recorte: {photo.name}")
+            popup.transient(self.root)
+            popup.grab_set()
+            container = ttk.Frame(popup, padding=14)
+            container.pack(fill="both", expand=True)
+            ttk.Label(container, text="Arrastra los cuatro círculos a las esquinas de la hoja.",
+                      font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
+            padding = 14  # los tiradores no quedan cortados en bordes de foto
+            board = tk.Canvas(container, width=width + 2*padding,
+                              height=height + 2*padding, highlightthickness=0,
+                              borderwidth=0, cursor="crosshair", bg="#1B242C")
+            board.pack()
+            board.create_image(padding, padding, image=img, anchor="nw")
+            board.image_reference = img
+            poly = board.create_polygon(0, 0, 0, 0, outline="#16A6DB", fill="", width=3)
+            handles = [board.create_oval(0, 0, 0, 0, fill="#16A6DB", outline="white", width=2)
+                       for _ in range(4)]
+            labels = [board.create_text(0, 0, fill="white", text=str(i+1), font=("Segoe UI", 10, "bold"))
+                      for i in range(4)]
+            selected_handle = [None]
+
+            def redraw():
+                board.coords(poly, *[value + padding for xy in points for value in xy])
+                for i, (x, y) in enumerate(points):
+                    board.coords(handles[i], x+padding-11, y+padding-11,
+                                 x+padding+11, y+padding+11)
+                    board.coords(labels[i], x+padding, y+padding)
+
+            def near_handle(event):
+                distances = [np.hypot(x+padding-event.x, y+padding-event.y) for x, y in points]
+                closest = int(np.argmin(distances))
+                return closest if distances[closest] < 38 else None
+
+            def press(event):
+                selected_handle[0] = near_handle(event)
+
+            def drag(event):
+                i = selected_handle[0]
+                if i is not None:
+                    points[i] = [max(0, min(width-1, event.x-padding)),
+                                 max(0, min(height-1, event.y-padding))]
+                    redraw()
+
+            board.bind("<ButtonPress-1>", press)
+            board.bind("<B1-Motion>", drag)
+            board.bind("<ButtonRelease-1>", lambda _event: selected_handle.__setitem__(0, None))
+
+            def reset():
+                quad = detected if detected is not None else np.float32([
+                    [w*.05, h*.05], [w*.95, h*.05], [w*.95, h*.95], [w*.05, h*.95]])
+                points[:] = (ordenar_esquinas(quad) * np.float32([ratio_x, ratio_y])).tolist()
+                redraw()
+
+            def close_popup():
+                self.crop_editor_token += 1
+                self.crop_apply_optimization = None
+                self.crop_popup = None
+                popup.grab_release()
+                popup.destroy()
+
+            def save():
+                quad = np.asarray(points, dtype=np.float32) / np.float32([ratio_x, ratio_y])
+                # Comprobar que no se cruzan las aristas ni se recorta una zona diminuta.
+                shape = quad.reshape(-1, 1, 2)
+                if not cv2.isContourConvex(shape) or cv2.contourArea(shape) < .07*w*h:
+                    messagebox.showwarning("Esquinas incorrectas", "Los puntos deben formar una hoja sin cruzarse.", parent=popup)
+                    return
+                self.manual_corners[photo] = ordenar_esquinas(quad).copy()
+                close_popup()
+                self.preview_revision += 1
+                self.preview_cache.clear()
+                self.preview_pending.clear()
+                self.preview_token += 1
+                self.refresh_preview()
+                review = self.active_review
+                if review is not None and not review.closed:
+                    review.refresh_auto_results()
+
+            busy = [False]
+            message = tk.StringVar(value="")
+            def apply_optimization(refined, failure):
+                busy[0] = False
+                optimize_button.state(["!disabled"])
+                if failure:
+                    message.set("No se pudo optimizar: " + str(failure))
+                    return
+                if refined is None:
+                    message.set("Sin otra mejora segura. Puedes mover los puntos.")
+                    return
+                points[:] = (ordenar_esquinas(refined) *
+                             np.float32([ratio_x, ratio_y])).tolist()
+                redraw()
+                message.set("Esquinas mejoradas. Guarda el recorte para aplicarlas.")
+
+            def optimize():
+                if busy[0]:
+                    return
+                busy[0] = True
+                optimize_button.state(["disabled"])
+                message.set("Optimizando bordes...")
+                current = (np.asarray(points, dtype=np.float32) /
+                           np.float32([ratio_x, ratio_y])).copy()
+                def worker():
+                    try:
+                        result = optimize_manual_page_corners(photo, current)
+                        self.events.put(('crop_optimized', token, result, None))
+                    except Exception as exc:
+                        self.events.put(('crop_optimized', token, None, str(exc)))
+                self.preview_pool.submit(worker)
+
+            self.crop_apply_optimization = apply_optimization
+            redraw()
+            controls = ttk.Frame(container)
+            controls.pack(fill="x", pady=(11, 0))
+            ttk.Button(controls, text="Volver a detección automática", command=reset).pack(side="left")
+            optimize_button = ttk.Button(controls, text="Optimizar", command=optimize)
+            optimize_button.pack(side="left", padx=(8, 0))
+            ttk.Button(controls, text="Cancelar", command=close_popup).pack(side="right", padx=(7, 0))
+            ttk.Button(controls, text="Guardar recorte", command=save).pack(side="right")
+            ttk.Label(container, textvariable=message, foreground="#536273").pack(
+                anchor="w", pady=(5, 0))
+            popup.protocol("WM_DELETE_WINDOW", close_popup)
+            popup.update_idletasks()
+            popup_w = min(popup.winfo_reqwidth(), screen_w - 30)
+            popup_h = min(popup.winfo_reqheight(), screen_h - 85)
+            x = max(0, (screen_w - popup_w)//2)
+            y = max(0, (screen_h - popup_h)//2 - 20)
+            popup.geometry(f"{popup_w}x{popup_h}+{x}+{y}")
+            popup.resizable(False, False)
 
         @staticmethod
         def clean_name(value: str) -> str:
@@ -1241,6 +1459,25 @@ def gui_main():
                         messagebox.showerror("Fotografías", error, parent=self.root)
                     else:
                         self._apply_folder(chosen_folder, chosen_paths)
+                elif event[0] == 'crop_ready':
+                    _, token, photo, preview, size, detected, failure = event
+                    if token != self.crop_editor_token:
+                        if preview is not None:
+                            preview.close()
+                        continue
+                    self.crop_loading = False
+                    self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
+                    if failure:
+                        self.preview_status.set("No se pudo abrir el editor.")
+                        messagebox.showerror("Ajustar esquinas", failure, parent=self.root)
+                    else:
+                        self.show_crop_editor(photo, preview, size, detected, token)
+                elif event[0] == 'crop_optimized':
+                    _, token, refined, failure = event
+                    if (token == self.crop_editor_token and
+                            self.crop_popup is not None and
+                            self.crop_apply_optimization is not None):
+                        self.crop_apply_optimization(refined, failure)
                 elif event[0] == 'preview':
                     _, token, key, result, failure, revision = event
                     if revision != self.preview_revision:
@@ -1367,6 +1604,7 @@ def gui_main():
             self.root.after(100, self.poll_events)
 
         def _on_close(self):
+            self.crop_editor_token += 1
             self.import_generation += 1
             self.detection_generation += 1
             if self.active_review is not None and not self.active_review.closed:
