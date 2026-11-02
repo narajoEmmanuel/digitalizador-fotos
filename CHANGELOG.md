@@ -1,5 +1,13 @@
 # Historial de cambios
 
+## 1.8.1 (2026-11-01)
+
+- Todos los botones del revisor se trasladaron bajo la matriz del panel izquierdo.
+- Panel derecho reservado al 100 % para la fotografía y el zoom, sin barras de controles.
+- Matriz ajustada al 36 % de la anchura para ampliar la zona de inspección.
+- Revisión rápida sin aprobaciones individuales, sin modificar el procesamiento ni la exportación.
+
+
 ## 1.8 (2026-11-01)
 
 - Eliminados **Aprobar** por página, contador de páginas revisadas y advertencia al exportar.
