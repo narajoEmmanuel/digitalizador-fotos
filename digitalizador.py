@@ -23,7 +23,7 @@ import traceback
 from pathlib import Path
 from typing import Callable
 
-from recorte import detectar_hoja, ordenar_esquinas, refinar_esquinas
+from recorte import detectar_hoja, ordenar_esquinas, refinar_esquinas, geometria_hoja_valida
 
 import cv2
 import numpy as np
@@ -276,7 +276,7 @@ def safe_auto_geometry(quad: np.ndarray, width: int, height: int) -> bool:
         return False
     if max(edges[1], edges[3]) / min(edges[1], edges[3]) > 1.85:
         return False
-    return True
+    return geometria_hoja_valida(pts)
 
 
 def refine_automatic_corners(image: np.ndarray, corners: np.ndarray,
@@ -667,9 +667,6 @@ def gui_main():
             self.rotations: dict[Path, int] = {}
             self.pdf_name = tk.StringVar(value="")
             self.previous_folder_name: str | None = None
-            self.auto_crop = tk.BooleanVar(value=True)
-            self.auto_crop_enabled = True
-            self.crop_status = tk.StringVar(value="Activo")
             self.info = tk.StringVar(value="Selecciona una carpeta con las fotos de tus documentos.")
             self.progress_text = tk.StringVar(value="")
             self.events: queue.Queue = queue.Queue()
@@ -730,12 +727,6 @@ def gui_main():
             ttk.Label(body, textvariable=self.info, wraplength=920).pack(anchor="w", pady=(6, 9))
             crop_row = ttk.Frame(body)
             crop_row.pack(fill="x", pady=(0, 4))
-            self.crop_check = ttk.Checkbutton(
-                crop_row, text="Recorte automático", variable=self.auto_crop,
-                command=self.on_auto_crop_change)
-            self.crop_check.pack(side="left")
-            ttk.Label(crop_row, textvariable=self.crop_status,
-                      foreground="#667085").pack(side="left", padx=(12, 0))
             self.optimize_all_button = ttk.Button(
                 crop_row, text="Optimizar todas", style="Small.TButton",
                 command=self.optimize_all_pages)
@@ -848,53 +839,13 @@ def gui_main():
             self.matrix_btn.state(["!disabled"] if self.paths else ["disabled"])
             self.optimize_all_button.state(["!disabled"] if self.paths else ["disabled"])
             if self.paths:
-                if self.auto_crop_enabled:
-                    self.crop_status.set(f"Optimizando: 0/{len(self.paths)}")
-                    self._preload_detections(list(self.paths), self.detection_generation)
-                else:
-                    self.crop_status.set("Desactivado")
-                    self.progress_text.set("Sin recorte automático.")
+                self._preload_detections(list(self.paths), self.detection_generation)
                 self.listbox.selection_set(0)
                 self.refresh_preview()
             else:
                 self.set_preview(self.preview_orig, None, "Original")
                 self.set_preview(self.preview_result, None, "Procesado")
                 messagebox.showinfo("No hay fotografías", "Esta carpeta no contiene fotos JPG, PNG o HEIC compatibles.")
-
-        def on_auto_crop_change(self):
-            """La casilla solo enciende/apaga; Optimizar todas es otra acción."""
-            if self.batch_optimizing:
-                return
-            enabled = bool(self.auto_crop.get())
-            self.auto_crop_enabled = enabled
-            self.preview_revision += 1
-            self.preview_cache.clear()
-            self.preview_pending.clear()
-            self.preview_token += 1
-            if self.paths:
-                self.detection_generation += 1
-                self.detection_done = 0
-                self.detection_warnings = 0
-                if enabled:
-                    # Nueva detección solicitada explícitamente por el usuario.
-                    _cached_auto_corners.cache_clear()
-                    clear_automatic_optimizations()
-                    self.detection_total = len(self.paths)
-                    self.crop_status.set(f"Optimizando: 0/{len(self.paths)}")
-                    self._preload_detections(list(self.paths), self.detection_generation)
-                else:
-                    self.detection_total = 0
-                    self.crop_status.set("Desactivado")
-                    if not self.busy:
-                        self.progress_text.set("Recorte automático desactivado.")
-                review = self.active_review
-                if review is not None and not review.closed:
-                    review.set_auto_crop(enabled)
-                    review.set_detection_progress(
-                        0, len(self.paths) if enabled else 0)
-            else:
-                self.crop_status.set("Activo" if enabled else "Desactivado")
-            self.refresh_preview()
 
         def optimize_all_pages(self):
             """Optimización adicional de todo el lote, con progreso visible.
@@ -905,12 +856,6 @@ def gui_main():
             if (self.busy or self.import_loading or self.batch_optimizing
                     or not self.paths):
                 return
-            if not self.auto_crop_enabled:
-                self.auto_crop.set(True)
-                self.auto_crop_enabled = True
-                review = self.active_review
-                if review is not None and not review.closed:
-                    review.set_auto_crop(True)
             self.detection_generation += 1
             generation = self.detection_generation
             self.batch_optimizing = True
@@ -919,14 +864,12 @@ def gui_main():
             self.detection_warnings = 0
             self.make_button.state(["disabled"])
             self.optimize_all_button.state(["disabled"])
-            self.crop_check.state(["disabled"])
             self.folder_button.state(["disabled"])
             review = self.active_review
             if review is not None and not review.closed:
                 review.export_button.state(["disabled"])
             self.progress.configure(mode="determinate", maximum=100, value=0)
             self.progress_text.set(f"Optimizando 0/{len(self.paths)} páginas · 0 %")
-            self.crop_status.set(f"Optimizando: 0/{len(self.paths)}")
             review = self.active_review
             if review is not None and not review.closed:
                 review.set_batch_optimization_progress(0, len(self.paths))
@@ -1053,23 +996,19 @@ def gui_main():
 
             from revisor import ReviewWorkspace
             manual = self.manual_corners
-            auto = self.auto_crop_enabled
-
             def processed(path):
-                # El trabajador usa un booleano normal, nunca una variable de Tk.
-                active = self.auto_crop_enabled
                 original, result, _ = preview_pair(
-                    path, active, manual.get(path), rotation=self.rotations.get(path, 0))
+                    path, True, manual.get(path), rotation=self.rotations.get(path, 0))
                 original.close()
                 reason = None
-                if active and path not in manual:
+                if path not in manual:
                     _, reason = automatic_page_corners(path)
                 return result, reason
 
             review = ReviewWorkspace(
                 self.root, self.paths, processed, self._matrix_save,
                 preview_image, manual, self._replace_review_photo,
-                self._insert_review_photo, self.make_pdf, auto_crop=auto,
+                self._insert_review_photo, self.make_pdf, auto_crop=True,
                 pdf_name=self.pdf_name, rotations=self.rotations,
                 on_rotate=self._rotate_review_photo)
             self.active_review = review
@@ -1149,7 +1088,7 @@ def gui_main():
                 'Recorte manual aplicado.' if cropped and photo in self.manual_corners
                 else 'Hoja detectada y enderezada.' if cropped
                 else 'No se detectó la hoja. Ajusta sus esquinas manualmente.'
-                if self.auto_crop.get() else 'Sin recorte: imagen completa.')
+                )
 
         def refresh_preview(self):
             if self.busy or not self.paths:
@@ -1164,7 +1103,7 @@ def gui_main():
             token = self.preview_token
             if self.preview_after is not None:
                 self.root.after_cancel(self.preview_after)
-            key = (photo, self.auto_crop.get(), tuple(self.manual_corners[photo].ravel())
+            key = (photo, True, tuple(self.manual_corners[photo].ravel())
                    if photo in self.manual_corners else None, self.rotations.get(photo, 0))
             if key in self.preview_cache:
                 self.preview_cache.move_to_end(key)
@@ -1198,7 +1137,7 @@ def gui_main():
             for n in (index + 1, index - 1):
                 if 0 <= n < len(self.paths):
                     photo = self.paths[n]
-                    key = (photo, self.auto_crop.get(),
+                    key = (photo, True,
                            tuple(self.manual_corners[photo].ravel()) if photo in self.manual_corners else None,
                            self.rotations.get(photo, 0))
                     self._submit_preview(-1, key)
@@ -1266,12 +1205,11 @@ def gui_main():
             self.manual_button.state(["disabled"])
             self.matrix_btn.state(["disabled"])
             self.name_entry.state(["disabled"])
-            self.crop_check.state(["disabled"])
             self.optimize_all_button.state(["disabled"])
             self.progress.configure(mode="determinate", maximum=100, value=0)
             self.progress_text.set(f"Preparando {len(self.paths)} páginas...")
             paths = list(self.paths)
-            should_crop = self.auto_crop.get()
+            should_crop = True
             manual = dict(self.manual_corners)
             rotations = dict(self.rotations)
 
@@ -1317,7 +1255,7 @@ def gui_main():
                             self.preview_cache.popitem(last=False)
                     current = self.listbox.curselection()
                     if current and self.paths[current[0]] == key[0]:
-                        expected = (key[0], self.auto_crop.get(),
+                        expected = (key[0], True,
                                     tuple(self.manual_corners[key[0]].ravel())
                                     if key[0] in self.manual_corners else None,
                                     self.rotations.get(key[0], 0))
@@ -1335,7 +1273,6 @@ def gui_main():
                     self.progress.configure(value=percent)
                     self.progress_text.set(
                         f"Optimizando {done}/{total} páginas · {percent} %")
-                    self.crop_status.set(f"Optimizando: {done}/{total}")
                     review = self.active_review
                     if review is not None and not review.closed:
                         review.set_batch_optimization_progress(done, total)
@@ -1346,11 +1283,9 @@ def gui_main():
                         self.detection_warnings = failed
                         self.optimize_all_button.state(["!disabled"])
                         self.make_button.state(["!disabled"])
-                        self.crop_check.state(["!disabled"])
                         self.folder_button.state(["!disabled"])
                         if review is not None and not review.closed:
                             review.export_button.state(["!disabled"])
-                        self.crop_status.set(f"Listo: {total}/{total}")
                         self.progress_text.set(
                             f"Optimización finalizada: {improved} mejoradas, "
                             f"{skipped} recortes manuales conservados"
@@ -1366,13 +1301,9 @@ def gui_main():
                             review.refresh_auto_results()
                 elif event[0] == "batch_detection":
                     _, generation, done, total, warnings = event
-                    if generation == self.detection_generation and self.auto_crop_enabled:
+                    if generation == self.detection_generation:
                         self.detection_done, self.detection_total = done, total
                         self.detection_warnings = warnings
-                        self.crop_status.set(
-                            f"Optimizando: {done}/{total}" if done < total
-                            else f"Listo: {total}/{total}"
-                                 + (f" · {warnings} revisar" if warnings else ""))
                         if not self.busy:
                             self.progress_text.set(
                                 f"Recortes preparados: {done}/{total}"
@@ -1453,7 +1384,6 @@ def gui_main():
             self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
             self.matrix_btn.state(["!disabled"] if self.paths else ["disabled"])
             self.name_entry.state(["!disabled"])
-            self.crop_check.state(["!disabled"])
             self.optimize_all_button.state(
                 ["disabled"] if not self.paths or self.batch_optimizing else ["!disabled"])
 
