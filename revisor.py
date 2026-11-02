@@ -124,6 +124,25 @@ class ReviewWorkspace(PhotoMatrix):
             self.choose(0)
         self.window.after(100, self.poll_large)
 
+    def set_auto_crop(self, enabled: bool):
+        """Sincronizar el revisor abierto con la casilla de la pantalla principal."""
+        if self.closed or self.auto_crop == enabled:
+            return
+        self.auto_crop = enabled
+        self.detect_steps.clear()
+        self.invalidate_all_previews()
+        # No sobrescribir un recorte manual que aún no se ha guardado.
+        if self.mode == "preview":
+            self.preview_mode()
+        elif self.selected is not None and not self.dirty:
+            self.editor_loaded_index = None
+            super().choose(self.selected)
+        else:
+            self.status.set("Recorte automático " +
+                            ("activado" if enabled else "desactivado")
+                            + ". Ajuste manual sin guardar conservado.")
+        self._set_mode_controls()
+
     def set_detection_progress(self, done: int, total: int):
         """Indicador breve que desaparece cuando el lote quedó analizado."""
         if total and done < total:
