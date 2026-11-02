@@ -96,6 +96,8 @@ class ReviewFlowTests(unittest.TestCase):
         panel = ReviewWorkspace.__new__(ReviewWorkspace)
         panel.selected = 0
         panel.paths = [Path("pagina1.jpg"), Path("pagina2.jpg")]
+        panel.closed = False
+        panel._pending = mock.Mock(return_value=True)
         panel.dirty = False
         panel.corners_enabled = True
         panel.mode = "edit"
