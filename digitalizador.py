@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, Future
 from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 import os
@@ -283,11 +283,30 @@ def _cached_auto_corners(photo: Path, modified_ns: int, size_bytes: int):
         reduced.close()
 
 
+_detection_lock = threading.Lock()
+_detection_inflight: dict[tuple[Path, int, int], Future] = {}
+
+
 def automatic_page_corners(photo: Path) -> tuple[np.ndarray | None, str | None]:
-    """Coordenadas originales compartidas por todas las vistas y el PDF."""
+    """Analiza cada foto una vez, incluso entre trabajadores simultáneos."""
     photo = Path(photo)
     stat = photo.stat()
-    corners, reason = _cached_auto_corners(photo, stat.st_mtime_ns, stat.st_size)
+    key = (photo, stat.st_mtime_ns, stat.st_size)
+    with _detection_lock:
+        future = _detection_inflight.get(key)
+        leader = future is None
+        if leader:
+            future = Future()
+            _detection_inflight[key] = future
+    if leader:
+        try:
+            future.set_result(_cached_auto_corners(*key))
+        except Exception as exc:
+            future.set_exception(exc)
+        finally:
+            with _detection_lock:
+                _detection_inflight.pop(key, None)
+    corners, reason = future.result()
     return (corners.copy() if corners is not None else None), reason
 
 
