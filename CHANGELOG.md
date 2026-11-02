@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## 1.17.1 (2026-11-02)
+
+- La casilla de recorte automático antes solo refrescaba la imagen principal y no afectaba a la matriz ya abierta.
+- Ahora activa/desactiva la detección en todas las fotografías y sincroniza el revisor, miniaturas y exportación.
+- Al activarla de nuevo se inicia un nuevo análisis de esquinas con hasta dos refinamientos y progreso visible.
+- Al desactivar se cancelan las pasadas restantes, se evita reabrir detectores y se conserva cualquier recorte manual.
+- Caché con versión de modo para descartar miniaturas generadas antes del cambio.
+- Pruebas de conmutación del revisor, recortes pendientes y trabajos obsoletos.
+
+
 ## 1.17 (2026-11-02)
 
 - Exportación PDF sin JPEG intermedios en disco: cada imagen procesada se comprime en memoria y se incrusta directamente como JPEG, sin recodificarla al incorporarla al PDF.
