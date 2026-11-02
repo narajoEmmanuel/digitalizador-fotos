@@ -172,6 +172,70 @@ class DigitalizadorTests(unittest.TestCase):
                 refiner.call_args.args[0].shape[:2], (1600, 800))
             digitalizador._cached_auto_corners.cache_clear()
 
+    def test_optimizar_todas_refina_esquinas_existentes_y_pdf_las_reutiliza(self):
+        import digitalizador
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "hoja.jpg"
+            Image.new("RGB", (700, 950), (230, 221, 200)).save(path)
+            base = np.float32([[80, 90], [590, 90], [590, 850], [80, 850]])
+            better1 = base + np.float32([[-5, -4], [5, -4], [5, 4], [-5, 4]])
+            better2 = better1 + np.float32([[-3, -3], [3, -3], [3, 3], [-3, 3]])
+            digitalizador.clear_automatic_optimizations()
+            with (mock.patch("digitalizador._cached_auto_corners",
+                             return_value=(base.copy(), None)) as detect,
+                  mock.patch("digitalizador.refinar_esquinas",
+                             side_effect=[better1, better2]) as refine):
+                changed, issue = digitalizador.optimize_photo_corners(path)
+                self.assertTrue(changed)
+                self.assertIsNone(issue)
+                self.assertEqual(refine.call_count, 2)
+                previous_call_count = detect.call_count
+                final, issue = digitalizador.automatic_page_corners(path)
+                np.testing.assert_allclose(final, better2)
+                output, cropped = prepare_page(path, auto_crop=True)
+                self.assertTrue(cropped)
+                output.close()
+                # Ni la vista ni la exportación han recalculado las esquinas.
+                self.assertEqual(detect.call_count, previous_call_count)
+                self.assertEqual(refine.call_count, 2)
+            digitalizador.clear_automatic_optimizations()
+
+    def test_optimizar_todas_no_modifica_esquinas_si_no_hay_mejora(self):
+        import digitalizador
+        with tempfile.TemporaryDirectory() as folder:
+            photo = Path(folder) / "hoja.jpg"
+            Image.new("RGB", (700, 950), "beige").save(photo)
+            initial = np.float32([[80, 90], [590, 90], [590, 850], [80, 850]])
+            digitalizador.clear_automatic_optimizations()
+            with (mock.patch("digitalizador._cached_auto_corners",
+                             return_value=(initial.copy(), None)),
+                  mock.patch("digitalizador.refinar_esquinas", return_value=None) as improve):
+                changed, problem = digitalizador.optimize_photo_corners(photo)
+                self.assertFalse(changed)
+                self.assertIsNone(problem)
+                self.assertEqual(improve.call_count, 1)
+                final, _ = digitalizador.automatic_page_corners(photo)
+                np.testing.assert_array_equal(final, initial)
+            digitalizador.clear_automatic_optimizations()
+
+    def test_reactivacion_automatica_descarta_optimizaciones_anteriores(self):
+        import digitalizador
+        with tempfile.TemporaryDirectory() as folder:
+            photo = Path(folder) / "hoja.jpg"
+            Image.new("RGB", (700, 950), "beige").save(photo)
+            initial = np.float32([[80, 90], [590, 90], [590, 850], [80, 850]])
+            improved = initial + np.float32([[-8, -5], [8, -5], [8, 5], [-8, 5]])
+            digitalizador.clear_automatic_optimizations()
+            with (mock.patch("digitalizador._cached_auto_corners",
+                             return_value=(initial.copy(), None)),
+                  mock.patch("digitalizador.refinar_esquinas", return_value=improved)):
+                self.assertTrue(digitalizador.optimize_photo_corners(photo)[0])
+                np.testing.assert_allclose(digitalizador.automatic_page_corners(photo)[0],
+                                           improved)
+                digitalizador.clear_automatic_optimizations()
+                np.testing.assert_allclose(digitalizador.automatic_page_corners(photo)[0],
+                                           initial)
+
     def test_refinamiento_automatico_para_si_no_mejora(self):
         import digitalizador
         candidate = np.float32([[80, 90], [520, 90], [520, 690], [80, 690]])
