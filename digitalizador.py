@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 import os
 import queue
@@ -217,58 +218,135 @@ def preview_image(photo: Path, max_side: int = 1150) -> tuple[Image.Image, tuple
         return frame.copy(), (width, height)
 
 
-def preview_pair(photo: Path, auto_crop: bool, manual_corners: np.ndarray | None):
-    """Ambas vistas se calculan a baja resolución, solo para navegación fluida."""
-    original, (full_w, full_h) = preview_image(photo, 1050)
-    image = np.asarray(original)
-    cropped = False
-    processed = original.copy()
-    if auto_crop:
-        quad = (manual_corners * np.float32([image.shape[1] / full_w, image.shape[0] / full_h])
-                if manual_corners is not None else find_document_corners(image))
-        if quad is not None:
-            tl, tr, br, bl = ordenar_esquinas(quad)
-            w = int(max(np.linalg.norm(tr-tl), np.linalg.norm(br-bl)))
-            h = int(max(np.linalg.norm(bl-tl), np.linalg.norm(br-tr)))
-            if w >= 35 and h >= 35:
-                end = np.float32([[0, 0], [w-1, 0], [w-1, h-1], [0, h-1]])
-                warped = cv2.warpPerspective(image, cv2.getPerspectiveTransform(
-                    quad.astype(np.float32), end), (w, h), flags=cv2.INTER_LINEAR)
-                processed = Image.fromarray(warped, 'RGB')
-                cropped = True
-    return original, processed, cropped
-
 
 def find_document_corners(rgb: np.ndarray) -> np.ndarray | None:
     """Encuentra la hoja usando bordes, contraste y color del fondo."""
     return detectar_hoja(rgb)
 
 
+def safe_auto_geometry(quad: np.ndarray, width: int, height: int) -> bool:
+    """Descarta perspectivas extremas antes de transformar una hoja."""
+    pts = ordenar_esquinas(quad)
+    if not np.isfinite(pts).all() or not cv2.isContourConvex(pts.reshape(-1, 1, 2)):
+        return False
+    if ((pts[:, 0] < 0).any() or (pts[:, 1] < 0).any()
+            or (pts[:, 0] > width-1).any() or (pts[:, 1] > height-1).any()):
+        return False
+    area = abs(cv2.contourArea(pts)) / (width * height)
+    if not .18 <= area <= .98:
+        return False
+    edges = [float(np.linalg.norm(pts[(i+1)%4]-pts[i])) for i in range(4)]
+    if min(edges) < .18 * min(width, height):
+        return False
+    if max(edges[0], edges[2]) / min(edges[0], edges[2]) > 1.85:
+        return False
+    if max(edges[1], edges[3]) / min(edges[1], edges[3]) > 1.85:
+        return False
+    return True
+
+
+@lru_cache(maxsize=160)
+def _cached_auto_corners(photo: Path, modified_ns: int, size_bytes: int):
+    """Detector a la misma escala para matriz, zoom y exportación."""
+    reduced, full_size = preview_image(photo, 1050)
+    try:
+        image = np.asarray(reduced)
+        h, w = image.shape[:2]
+        quad = find_document_corners(image)
+        if quad is None:
+            return None, "No se detectó la hoja"
+        quad = ordenar_esquinas(quad)
+        if not safe_auto_geometry(quad, w, h):
+            return None, "Perspectiva dudosa"
+        # Segunda escala: si el detector cambia de hoja, no deformar el PDF.
+        scale = min(1., 700 / max(w, h))
+        if scale < 1:
+            second_image = cv2.resize(image, (round(w*scale), round(h*scale)),
+                                      interpolation=cv2.INTER_AREA)
+            second = find_document_corners(second_image)
+            if second is None:
+                return None, "Bordes inestables"
+            second = ordenar_esquinas(second) / scale
+            if np.max(np.linalg.norm(quad - second, axis=1)) > max(18., .035*max(w, h)):
+                return None, "Esquinas inestables"
+        full_w, full_h = full_size
+        corners = quad * np.float32([full_w / w, full_h / h])
+        return corners.astype(np.float32), None
+    finally:
+        reduced.close()
+
+
+def automatic_page_corners(photo: Path) -> tuple[np.ndarray | None, str | None]:
+    """Coordenadas originales compartidas por todas las vistas y el PDF."""
+    photo = Path(photo)
+    stat = photo.stat()
+    corners, reason = _cached_auto_corners(photo, stat.st_mtime_ns, stat.st_size)
+    return (corners.copy() if corners is not None else None), reason
+
+
+def preview_pair(photo: Path, auto_crop: bool, manual_corners: np.ndarray | None):
+    """Miniatura con la misma geometría que el PDF real."""
+    original, (full_w, full_h) = preview_image(photo, 1050)
+    frame = np.asarray(original)
+    processed = original.copy()
+    cropped = False
+    if manual_corners is not None:
+        corners = np.asarray(manual_corners, np.float32)
+    elif auto_crop:
+        corners, _issue = automatic_page_corners(photo)
+    else:
+        corners = None
+    if corners is not None:
+        quad = ordenar_esquinas(corners * np.float32([
+            frame.shape[1] / full_w, frame.shape[0] / full_h]))
+        tl, tr, br, bl = quad
+        width = int(max(np.linalg.norm(tr-tl), np.linalg.norm(br-bl)))
+        height = int(max(np.linalg.norm(bl-tl), np.linalg.norm(br-tr)))
+        if width >= 35 and height >= 35:
+            dest = np.float32([[0, 0], [width-1, 0], [width-1, height-1], [0, height-1]])
+            result = cv2.warpPerspective(frame, cv2.getPerspectiveTransform(quad, dest),
+                                         (width, height), flags=cv2.INTER_CUBIC)
+            processed.close()
+            processed = Image.fromarray(result, "RGB")
+            cropped = True
+    return original, processed, cropped
+
+
 def prepare_page(
     photo: Path, auto_crop: bool = True, manual_corners: np.ndarray | None = None,
 ) -> tuple[Image.Image, bool]:
-    """Imagen RGB, sin filtros ni OCR. Retorna (imagen, recortada)."""
+    """Transforma a resolución completa usando esquinas de la misma vista previa."""
+    if manual_corners is not None:
+        corners = np.asarray(manual_corners, np.float32)
+    elif auto_crop:
+        corners, _reason = automatic_page_corners(photo)
+    else:
+        corners = None
     pil = open_color_image(photo)
-    image = np.asarray(pil)
-    cropped = False
-    if auto_crop or manual_corners is not None:
-        corners = manual_corners if manual_corners is not None else find_document_corners(image)
+    try:
+        image = np.asarray(pil)
+        cropped = False
         if corners is not None:
             corners = ordenar_esquinas(corners)
             tl, tr, br, bl = corners
             width = int(max(np.linalg.norm(tr-tl), np.linalg.norm(br-bl)))
             height = int(max(np.linalg.norm(bl-tl), np.linalg.norm(br-tr)))
             if width >= 100 and height >= 100:
-                scale = min(1.0, MAX_SIDE / max(width, height))
-                out_w, out_h = max(1, round(width*scale)), max(1, round(height*scale))
-                dest = np.float32([[0, 0], [out_w-1, 0], [out_w-1, out_h-1], [0, out_h-1]])
-                transform = cv2.getPerspectiveTransform(corners.astype(np.float32), dest)
-                result = cv2.warpPerspective(image, transform, (out_w, out_h), flags=cv2.INTER_CUBIC)
-                pil = Image.fromarray(result, "RGB")
+                factor = min(1.0, MAX_SIDE / max(width, height))
+                out_w, out_h = max(1, round(width*factor)), max(1, round(height*factor))
+                dest = np.float32([[0, 0], [out_w-1, 0],
+                                   [out_w-1, out_h-1], [0, out_h-1]])
+                warped = cv2.warpPerspective(image, cv2.getPerspectiveTransform(corners.astype(np.float32), dest),
+                                             (out_w, out_h), flags=cv2.INTER_CUBIC)
+                pil.close()
+                pil = Image.fromarray(warped, "RGB")
                 cropped = True
-    if not cropped and max(pil.size) > MAX_SIDE:
-        pil.thumbnail((MAX_SIDE, MAX_SIDE), Image.Resampling.LANCZOS)
-    return pil, cropped
+        if not cropped and max(pil.size) > MAX_SIDE:
+            pil.thumbnail((MAX_SIDE, MAX_SIDE), Image.Resampling.LANCZOS)
+        return pil, cropped
+    except Exception:
+        pil.close()
+        raise
 
 
 def fit_on_page(image_file: Path, pdf: canvas.Canvas):
@@ -321,8 +399,9 @@ def create_pdf(
                     result.close()
                     fit_on_page(filename, pdf)
                     written += 1
-                    if auto_crop and not cropped:
-                        warnings.append(path.name)
+                    if auto_crop and not cropped and path not in (manual_corners or {}):
+                        _, reason = automatic_page_corners(path)
+                        warnings.append(path.name + (f': {reason}' if reason else ''))
                 except Exception as exc:
                     errors.append(f"{path.name}: {exc}")
                 finally:
@@ -558,9 +637,12 @@ def gui_main():
             auto = self.auto_crop.get()
 
             def processed(path):
-                original, result, _ = preview_pair(path, auto or path in manual, manual.get(path))
+                original, result, _ = preview_pair(path, auto, manual.get(path))
                 original.close()
-                return result
+                reason = None
+                if auto and path not in manual:
+                    _, reason = automatic_page_corners(path)
+                return result, reason
 
             ReviewWorkspace(self.root, self.paths, processed, self._matrix_save,
                             preview_image, manual, self._replace_review_photo,
