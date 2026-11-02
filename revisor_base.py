@@ -57,6 +57,7 @@ class PhotoMatrix:
         self.quick_pool = ThreadPoolExecutor(max_workers=2)
         self.quick_lock = Lock()
         self.quick_cache = OrderedDict()
+        self.quick_revision = 0
         self.events = queue.Queue()
         self.generation = self.selection_token = 0
         self.start = 0
@@ -166,6 +167,7 @@ class PhotoMatrix:
     def get_quick_preview(self, path):
         """Imagen procesada ligera compartida por miniaturas y vista de lectura."""
         with self.quick_lock:
+            revision = getattr(self, "quick_revision", 0)
             item = self.quick_cache.get(path)
             if item is not None:
                 self.quick_cache.move_to_end(path)
@@ -174,9 +176,9 @@ class PhotoMatrix:
         result = self.preview_provider(path)
         im, warning = result if isinstance(result, tuple) else (result, None)
         with self.quick_lock:
-            if self.closed:
+            if self.closed or revision != getattr(self, "quick_revision", 0):
                 im.close()
-                raise RuntimeError("Se cerró el revisor.")
+                raise RuntimeError("Vista anterior descartada")
             old = self.quick_cache.pop(path, None)
             if old is not None:
                 old[0].close()
@@ -185,6 +187,16 @@ class PhotoMatrix:
                 _, expired = self.quick_cache.popitem(last=False)
                 expired[0].close()
             return im.copy(), warning
+
+    def invalidate_all_previews(self):
+        """Invalidar imágenes del modo anterior y reconstruir las 16 miniaturas."""
+        with self.quick_lock:
+            self.quick_revision += 1
+            for image, _warning in self.quick_cache.values():
+                image.close()
+            self.quick_cache.clear()
+        self.crop_warnings.clear()
+        self.show(self.start)
 
     def discard_quick_preview(self, path):
         with self.quick_lock:
@@ -270,7 +282,10 @@ class PhotoMatrix:
             try:
                 img,size=self.photo_loader(self.paths[index],1600)
                 from digitalizador import automatic_page_corners
-                full, _problem = automatic_page_corners(self.paths[index])
+                if getattr(self, "auto_crop", True):
+                    full, _problem = automatic_page_corners(self.paths[index])
+                else:
+                    full = None
                 detected = (full * np.float32([img.width / size[0], img.height / size[1]])
                             if full is not None else None)
                 self.events.put(('editor',token,index,img,size,detected,None))
