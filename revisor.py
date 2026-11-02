@@ -82,13 +82,16 @@ class ReviewWorkspace(PhotoMatrix):
         ttk.Label(self.controls, textvariable=self.quality_label).pack(
             fill="x", pady=(4, 0), before=self.status_widget)
         footer = ttk.Frame(self.controls)
-        footer.pack(fill="x", pady=(6, 0))
+        footer.pack(fill="x", pady=(5, 0), before=self.status_widget)
         if self.pdf_name is not None:
-            ttk.Label(footer, text="Nombre").pack(side="left", padx=(0, 4))
-            ttk.Entry(footer, textvariable=self.pdf_name, width=23).pack(
-                side="left", fill="x", expand=True, padx=(0, 6))
+            name_row = ttk.Frame(footer)
+            name_row.pack(fill="x")
+            ttk.Label(name_row, text="Nombre").pack(side="left", padx=(0, 5))
+            ttk.Entry(name_row, textvariable=self.pdf_name).pack(
+                side="left", fill="x", expand=True)
         self.export_button = ttk.Button(footer, text="Exportar PDF", command=self.export)
-        self.export_button.pack(side="right")
+        # Exportar ocupa su propia fila, visible incluso en ventanas estrechas.
+        self.export_button.pack(fill="x", pady=(4, 0))
         self._set_mode_controls()
         self.status.set("")
         if self.paths:

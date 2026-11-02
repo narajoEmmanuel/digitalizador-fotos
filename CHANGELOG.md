@@ -1,5 +1,13 @@
 # Historial de cambios
 
+## 1.9.1 (2026-11-01)
+
+- Corrección de controles ocultos en la matriz: ahora se reserva espacio en el panel izquierdo antes de calcular el tamaño de las miniaturas.
+- Miniaturas proporcionadas a la resolución de la pantalla, especialmente en monitores pequeños.
+- Nombre del PDF y Exportar PDF en filas separadas, para evitar que el botón quede fuera del borde en ventanas estrechas.
+- Toda el área derecha sigue dedicada a la imagen final.
+
+
 ## 1.9 (2026-11-01)
 
 - Corregido el diálogo de exportación de la matriz, ahora se abre delante de ella y muestra el progreso y el resultado.

@@ -7,6 +7,15 @@ from PIL import Image, ImageTk
 from recorte import detectar_hoja, ordenar_esquinas
 
 
+def matrix_thumbnail_size(screen_width: int, screen_height: int) -> tuple[int, int]:
+    """Limita las miniaturas para que los controles inferiores sigan visibles."""
+    left_width = max(245, int(screen_width * .36) - 20)
+    width = max(48, min(160, (left_width - 28) // 4))
+    # Cuatro filas más su número de página, navegación y botones inferiores.
+    height = max(48, min(160, (screen_height - 360) // 4 - 17))
+    return width, height
+
+
 def validated_photo_corners(points, full_size):
     w, h = full_size
     corners = np.asarray(points, dtype=np.float32).reshape(4, 2)
@@ -53,8 +62,8 @@ class PhotoMatrix:
         self.points = self.detected_points = self.full_size = None
         self.drag_index = self.image_bounds = None
         self.resize_after = None
-        self.thumb_size = (max(85,min(180,self.window.winfo_screenwidth()//10)),
-                           max(78,min(155,self.window.winfo_screenheight()//6)))
+        self.thumb_size = matrix_thumbnail_size(
+            self.window.winfo_screenwidth(), self.window.winfo_screenheight())
         body = ttk.Frame(self.window, padding=8)
         body.pack(fill='both', expand=True)
         self.panes = ttk.Panedwindow(body, orient='horizontal')
@@ -77,10 +86,12 @@ class PhotoMatrix:
         ttk.Label(nav, textvariable=self.label).pack(side='left', padx=8)
         ttk.Button(nav, text='▶', command=lambda: self.show(self.start+16)).pack(side='right')
         self.grid = ttk.Frame(left)
-        self.grid.pack(fill='both', expand=True)
 
+        # Reservar primero espacio fijo para los controles inferiores.
+        # Si se empaqueta la matriz antes, sus 16 miniaturas desplazan los
+        # botones fuera de pantalla en monitores pequeños o con escalado.
         self.controls = ttk.Frame(left)
-        self.controls.pack(fill='x', pady=(6, 0))
+        self.controls.pack(side='bottom', fill='x', pady=(5, 0))
         page_bar = ttk.Frame(self.controls)
         page_bar.pack(fill='x')
         self.current_label = tk.StringVar(value='Selecciona una página')
@@ -94,8 +105,10 @@ class PhotoMatrix:
         self.save_button.state(['disabled'])
         self.reset_button.state(['disabled'])
         self.status = tk.StringVar(value='')
-        self.status_widget = ttk.Label(self.controls, textvariable=self.status, wraplength=410)
+        self.status_widget = ttk.Label(self.controls, textvariable=self.status, wraplength=260)
         self.status_widget.pack(fill='x', pady=(4, 0))
+        # La matriz usa únicamente el espacio que sobra, nunca tapa controles.
+        self.grid.pack(side='top', fill='both', expand=True)
 
         # La derecha se reserva íntegramente para la imagen o sus esquinas.
         self.board = tk.Canvas(right, bg='#242A30', highlightthickness=0, cursor='crosshair')
@@ -125,7 +138,7 @@ class PhotoMatrix:
             r,c = divmod(offset,4)
             cell = self.ttk.Frame(self.grid)
             cell.grid(row=r, column=c, sticky='nsew', padx=2, pady=2)
-            button = self.tk.Button(cell, text='Cargando...', compound='top', bg='#E9EEF1',
+            button = self.tk.Button(cell, text='…', compound='top', bg='#E9EEF1',
                      relief='flat', command=lambda i=index: self.choose(i))
             button.pack(fill='both',expand=True)
             caption = self.ttk.Label(cell,text=self._page_caption(index),anchor='center')

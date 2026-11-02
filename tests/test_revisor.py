@@ -200,6 +200,18 @@ class ReviewFlowTests(unittest.TestCase):
             self.assertLess(image.height, 490)
             image.close()
 
+    def test_miniaturas_respetan_monitores_pequenos(self):
+        from revisor_base import matrix_thumbnail_size
+        small = matrix_thumbnail_size(800, 600)
+        normal = matrix_thumbnail_size(1366, 768)
+        large = matrix_thumbnail_size(1920, 1080)
+        for width, height in (small, normal, large):
+            self.assertGreaterEqual(width, 48)
+            self.assertGreaterEqual(height, 48)
+        self.assertLessEqual(normal[1], 105)
+        self.assertLessEqual(small[0], 65)
+        self.assertGreater(large[1], normal[1])
+
     def test_no_permite_esquinas_cruzadas(self):
         with self.assertRaises(ValueError):
             validated_photo_corners(
