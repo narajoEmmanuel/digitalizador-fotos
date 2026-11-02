@@ -153,4 +153,4 @@ python -m unittest discover -s tests -v
 - `LEEME.txt`: instrucciones incluidas desde la versión 1.1.
 - `tests/`: pruebas automatizadas.
 
-**Versión**: 1.5, matriz de recortes y PDF, vista final ampliada, editor conservador, orden EXIF, sin OCR.
+**Versión**: 1.7, revisión del JPEG final en alta resolución, zoom fluido, matriz, edición opcional de esquinas, editor conservador, orden EXIF, sin OCR.
