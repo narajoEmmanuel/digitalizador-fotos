@@ -1,5 +1,18 @@
 # Historial de cambios
 
+## 1.19 (2026-11-02)
+
+- Nuevo botón **Aprender de mis ajustes** en pantalla principal, de uso explícito antes de exportar.
+- El aprendizaje no ocurre al arrastrar puntos, guardar recortes, importar carpetas ni exportar; únicamente al pulsar el botón.
+- Modelo local persistente en `%APPDATA%\\DigitalizadorFotos\\aprendizaje_esquinas.json`, sin guardar imágenes ni subir datos.
+- Extracción de ejemplos de correcciones manuales y detecciones originales, con características de color y ubicación de la hoja y desplazamientos geométricos normalizados.
+- Aplicación conservadora de ajustes a fotografías similares, con umbral de similitud, límites geométricos y retorno al detector de siempre ante casos dudosos.
+- Progreso de entrenamiento y resumen de ejemplos aprendidos, reutilizables en siguientes carpetas y sesiones.
+- Protección contra ejemplos duplicados al volver a pulsar el botón sobre la misma fotografía.
+- Pruebas de guardado solo bajo solicitud, persistencia, transferencia a fotos similares, rechazo de fondos diferentes y no duplicación de ejemplos.
+- Se conserva el editor de esquinas propio de la pantalla principal, independiente de la matriz.
+
+
 ## 1.18.2 (2026-11-02)
 
 - Restaurado el editor emergente original de la pantalla principal. **Editar esquinas** ya no abre la matriz.
