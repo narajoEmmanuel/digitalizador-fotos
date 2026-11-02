@@ -1,161 +1,75 @@
 # Digitalizador de Fotos
 
-## Flujo principal (v1.8)
+Aplicación local para Windows que convierte fotografías a un PDF a color, con recorte y corrección de perspectiva. **No transcribe texto ni utiliza OCR**.
 
-Abre la carpeta de fotografías y pulsa **Revisar en matriz**. Se muestran 16 páginas por bloque, sin requerir marcas ni aprobaciones. Haz una revisión visual rápida de las miniaturas y selecciona solo las hojas que necesiten zoom, recorte manual o sustitución. La selección enseña el resultado final a color y permite comprobar la nitidez a su resolución original. Los controles **Editar recorte**, **Detectar**, **Guardar recorte**, **Sustituir**, **+ Antes** y **+ Después** aparecen en el revisor según corresponda. **Exportar PDF** no obliga a aprobar ninguna página. Los recortes ajustados manualmente se guardan para la exportación, mientras que las fotografías originales permanecen intactas.
+## Flujo de trabajo
 
+1. Abre `INICIAR.bat` y elige una carpeta con fotografías.
+2. Escribe el nombre del PDF.
+3. Pulsa **Revisar en matriz** para ver 16 páginas por bloque.
+4. Revisa rápidamente todas las miniaturas. Selecciona solo las páginas dudosas para ver el resultado a resolución final, ampliar o corregir.
+5. Pulsa **Crear PDF** o **Exportar PDF** desde la matriz. **No hay aprobación individual de páginas.**
 
-## Vista de calidad final antes de exportar (v1.7)
+### Matriz de revisión
 
-Selecciona una miniatura y **verás directamente la hoja procesada, sin puntos de recorte**. La imagen se procesa desde la foto original a resolución completa, aplicando el mismo recorte, dimensiones máximas y compresión JPEG (calidad 97, submuestreo 0) que usa la exportación PDF. El indicador muestra las dimensiones finales en píxeles y el zoom actual. **Zoom al 100 %** significa un píxel de la fotografía final por píxel de pantalla, para comprobar nitidez real; acercar más no recupera detalle. La rueda hace zoom alrededor del puntero, puedes arrastrar para moverte y hacer doble clic para encajar la hoja.
+- **Izquierda:** 16 páginas por bloque, numeradas y con botones para avanzar o retroceder.
+- **Derecha:** vista del resultado procesado; no aparecen esquinas al seleccionar la página.
+- **Rueda del mouse:** zoom alrededor del puntero. **Arrastrar:** mover la imagen ampliada. **Doble clic:** encajar la página.
+- La vista de calidad presenta las dimensiones finales en píxeles y el zoom. A **100 %**, un píxel de imagen corresponde a un píxel de pantalla.
+- **Editar recorte:** muestra las cuatro esquinas. **Detectar:** vuelve a calcular el contorno. **Guardar recorte:** almacena las esquinas y regresa a la imagen procesada.
+- **Sustituir:** cambia la fotografía seleccionada. **+ Antes** y **+ Después:** insertan una página en el lugar indicado.
 
-Si una hoja está mal recortada, selecciona **Editar esquinas**; solo entonces verás los cuatro puntos. **Detectar hoja de nuevo** recalcula los puntos y avisa cuando no encuentra una hoja segura o el resultado no cambia. **Guardar recorte y ver resultado** almacena las esquinas, actualiza la miniatura y regresa automáticamente a la vista final.. No existe un paso de aprobación por página.
+El contenido de la matriz se calcula a tamaño ligero. La vista individual de calidad procede de la fotografía original y reproduce la compresión JPEG que se integrará en el PDF. La edición no modifica ni borra las fotos originales. Los cambios pendientes duran únicamente la sesión, así que exporta antes de cerrar la aplicación.
 
-La vista final se obtiene a partir del mismo procesamiento de alta resolución que el PDF, no de una miniatura. El lector PDF puede mostrar pequeños cambios de interpretación de color según el software. La calidad de la fotografía original y el recorte siguen siendo el límite real; una foto desenfocada debe sustituirse antes de exportar.
+### Corregir un PDF ya existente
 
+Utiliza **Editar PDF existente** solo para modificaciones posteriores. Es posible insertar o sustituir páginas y guardar un PDF nuevo sin recomprimir las páginas que no cambiaron. El original no se sobrescribe.
 
-## Revisión completa antes de exportar (v1.6)
+## Orden de fotografías de iPhone y OneDrive
 
-Elige primero una carpeta con fotografías del iPhone. La importación inicial las ordena por **hora original EXIF**. Después pulsa **Ver recortes en matriz (16)**:
+El orden inicial se basa en el momento de captura `EXIF DateTimeOriginal`, con subsegundos y zona horaria cuando existan. No depende del nombre, la fecha de modificación o la fecha de subida a OneDrive.
 
-1. Se abre una ventana maximizada. A la izquierda hay 16 miniaturas por bloque; a la derecha está la hoja elegida con sus cuatro esquinas editables.
-2. Ajusta los cuatro puntos y pulsa **Guardar recorte**. La matriz no se cierra y el recorte se actualiza.
-3. Pulsa **Vista ampliada** para comprobar **antes de exportar** el recorte real, calculado desde la fotografía de alta resolución. Utiliza **Ajustar**, **100 %**, **+**, **−** y arrastra la vista para examinar el texto.
-4. Si una foto quedó borrosa, pulsa **Sustituir foto**. Para una página faltante, selecciona otra hoja y pulsa **Insertar antes** o **Insertar después**. Las fotos nuevas no necesitan EXIF y mantienen la posición que hayas elegido.
-5. Revisa de un vistazo las miniaturas y abre únicamente las que te interesen.
-6. Cuando estés satisfecho, pulsa **Exportar PDF**, elige nombre y ubicación. Se mantiene el color y el recorte de alta resolución. Ninguna fotografía original se modifica.
+Si una foto no contiene ese dato, la importación inicial lo indica y se detiene para evitar un orden inventado. Las sustituciones e inserciones realizadas desde el revisor mantienen la posición elegida, incluso cuando la foto nueva no tiene EXIF.
 
-La función separada **Abrir PDF existente y corregir páginas** queda reservada para correcciones posteriores. **La vista ampliada del revisor no requiere crear antes un PDF.**
+## Instalación en Windows
 
+Requisitos: Windows 10 u 11 y Python 3.10 o posterior. La primera ejecución de `INICIAR.bat` prepara el entorno y descarga las dependencias. No es necesario enviar fotografías a ningún servidor.
 
-Una aplicación local para **Windows** que convierte fotografías de documentos en un PDF multipágina, conservando **los colores originales**. Detecta los bordes del papel, intenta recortarlo y enderezarlo y permite ajustar manualmente las cuatro esquinas si hace falta. **No utiliza OCR ni transcribe texto**.
+Para actualizar desde GitHub:
 
-## Revisión visual en matriz y vista ampliada (v1.5)
+```powershell
+Set-Location C:\dev\digitalizador-fotos
+git pull --ff-only origin main
+.\INICIAR.bat
+```
 
-**Antes de crear el PDF:** pulsa **Ver recortes en matriz (16)** para ver 16 hojas procesadas simultáneamente, por bloques. La vista muestra el recorte previsto, cargado en segundo plano. Pulsa cualquier miniatura para abrir directamente el ajuste manual de sus **cuatro esquinas**; vuelve a la matriz cuando quieras revisar más.
+Para ejecutar las pruebas:
 
-**Después de crear el PDF:** pulsa **Vista final ampliada del PDF**. Abre el PDF realmente guardado, sin volver a tomar las fotografías ni modificar su calidad. Utiliza **Ajustar**, **100 %**, **+ / −**, **F11** para pantalla completa, las flechas para cambiar de página y el desplazamiento para ver zonas ampliadas. Se muestra siempre **Página X de Y**.
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
 
-**Para un PDF antiguo:** usa **Ver PDF en matriz / corregir páginas** para abrir el editor y navegar por 16 miniaturas, seleccionar la página y reemplazarla o insertar otra. Desde el editor, **PDF ampliado** muestra el archivo guardado. Los cambios pendientes no se ven allí hasta guardarlos como una copia nueva.
-
-La matriz usa miniaturas ligeras y la vista ampliada renderiza únicamente la página visible, sin recomprimir ni alterar el PDF. **Las miniaturas no permiten verificar la nitidez real:** amplía cada página importante antes de eliminar las fotos originales.
-
-## Funciones
-
-### Corregir un PDF aunque ya eliminaste las fotografías originales
-
-1. Selecciona **Abrir PDF existente y corregir páginas**.
-2. El programa abre el PDF y muestra **Página X de Y**, número total de páginas y tamaño del PDF.
-3. Navega con **Anterior**, **Siguiente**, teclas **Alt + ← / →**, **RePág / AvPág**, o escribe un número en **Ir a**.
-   Para revisar muchas páginas de golpe, pulsa **Ver 16 páginas** y elige una miniatura. Puedes pasar a los siguientes bloques de 16 páginas.
-4. Selecciona la página borrosa y usa **Reemplazar página con foto**; para una hoja faltante elige **Insertar antes** o **Insertar después**.
-5. Para revertir una modificación errónea utiliza **Deshacer**.
-6. **Guardar PDF revisado...** genera una copia nueva `_revisado.pdf` y verifica que contenga todas las páginas. Nunca sobrescribe el documento anterior.
-
-Las páginas que no cambias **se copian directamente del PDF**, sin recomprimir ni degradar los JPG que ya contiene. Las fotos nuevas se recortan automáticamente a color y se integran con calidad alta. **Las fotografías nuevas no necesitan EXIF** porque eliges explícitamente su posición.
-
-**Antes de eliminar las fotos o los originales en papel:** abre el PDF resultante y revisa todas las páginas a tamaño real en un lector PDF. Guarda también una segunda copia independiente (por ejemplo, en un disco externo), porque un único PDF sin respaldo no es un archivo seguro.
-
-### Vistas previas rápidas
-
-- La vista previa utiliza una copia pequeña en memoria, sin procesar cada foto de 12 o 48 megapíxeles mientras navegas.
-- El procesamiento de vista previa ocurre en segundo hilo, conserva las páginas visualizadas en caché y precarga las páginas anterior y siguiente.
-- Abrir el ajuste de las cuatro esquinas también se prepara en segundo hilo para no congelar la ventana.
-- La vista general del PDF muestra 16 miniaturas a la vez y se carga en segundo hilo; puedes saltar a cualquier página del bloque.
-- Botones Anterior/Siguiente y numeración para recorrer muchas hojas rápidamente.
-- El recorte final se calcula **solo al crear el PDF**, con la foto de alta resolución.
-- El ajuste manual de esquinas usa miniatura para responder más rápido, sin limitar la calidad final del documento.
-
-
-- Orden automático por **fecha y hora original de captura** (`EXIF DateTimeOriginal`), no por nombre, descarga, modificación ni sincronización en OneDrive.
-- Detección y corrección de perspectiva de cada hoja.
-- Comparación entre foto original y página procesada.
-- Corrección manual opcional con cuatro esquinas ajustables.
-- Campo para **elegir el nombre del PDF** antes de guardarlo.
-- Exportación a PDF con páginas ajustadas a los recortes, sin márgenes añadidos.
-- Conservación de las fotografías originales. Todo se procesa localmente.
-
-## Requisitos
-
-- Windows 10 u 11.
-- Python 3.10 o superior, instalado con la opción de añadirlo al PATH.
-- Conexión a Internet **solo para instalar dependencias la primera vez**.
-
-## Inicio rápido
-
-1. Descarga el código ZIP del repositorio y descomprímelo.
-2. Abre `INICIAR.bat` con doble clic. Preparará un entorno `.venv` e instalará las dependencias.
-3. Selecciona una carpeta con las fotos originales del iPhone, descargadas desde OneDrive sin eliminar sus metadatos.
-4. Escribe el nombre del documento PDF.
-5. Revisa algunas páginas. Corrige manualmente las esquinas si el recorte no es preciso.
-6. Pulsa **Crear PDF** y elige dónde guardarlo.
-
-Formatos de entrada: JPG, JPEG, PNG, HEIC, HEIF, WebP, TIFF y BMP.
-
-## Recorte automático y ajuste manual (v1.4)
-
-- El detector compara el color **dentro y fuera de cada lado** de la hoja. Esto reduce la selección errónea de los límites de la fotografía, especialmente con fondos oscuros, coloreados o estampados.
-- En **Ajustar esquinas de esta hoja**, la fotografía se adapta automáticamente al espacio disponible en el monitor. Se ven siempre los cuatro puntos y el botón **Guardar recorte**, sin desplazar la ventana ni moverla fuera de la pantalla.
-- El editor añade un pequeño margen oscuro alrededor de la imagen para que se puedan arrastrar las esquinas incluso cuando estén pegadas al límite de la fotografía.
-- Si no existe evidencia suficiente para un recorte seguro, se conserva la fotografía completa y se avisa. Conviene comprobar esas páginas antes de eliminar los originales.
-- El ajuste de esquinas utiliza una miniatura para responder rápido. El PDF se procesa después con la fotografía original en alta resolución.
-
-## Consejos para mejores recortes
-
-- Fotografía las hojas **sobre una superficie de color diferente al papel**.
-- Mantén las cuatro esquinas completamente visibles.
-- Coloca el teléfono lo más perpendicular posible y evita sombras duras.
-- Usa una carpeta por documento. El programa **reordena automáticamente las fotos por su hora original de captura**, incluso si sus nombres están desordenados.
-- Si el recorte automático no es seguro, la aplicación conservará **la foto completa**, para evitar pérdida de contenido.
-
-## Orden de páginas y OneDrive
-
-- El programa lee exclusivamente `EXIF DateTimeOriginal` para saber **cuándo se tomó** cada foto. Si existen, también utiliza los subsegundos (`SubSecTimeOriginal`) y el huso horario (`OffsetTimeOriginal`).
-- **No utiliza** el nombre del archivo ni las fechas de creación/modificación de Windows ni la fecha de subida o descarga de OneDrive para ordenar.
-- Con fotos tomadas en una misma zona horaria, las organiza cronológicamente. Si todas incluyen zona horaria, compara instantes absolutos; si algunas no la incluyen, compara la hora local registrada por cada cámara.
-- Si alguna foto no conserva su fecha EXIF original, **se detiene y muestra cuáles son**, en vez de inventar un orden. Conviene descargar el archivo original, no una captura de pantalla ni una conversión que borre metadatos.
-- Si dos imágenes tienen exactamente el mismo valor de captura EXIF, esos metadatos **no permiten saber cuál fue primero**. En ese caso se mantiene el orden de entrada, que puede depender de cómo Windows enumere los archivos.
-- La lista lateral muestra la fecha y hora de captura junto al nombre del archivo para verificar el resultado.
-
-## Uso por consola (opcional)
+Uso opcional por consola:
 
 ```powershell
 .\.venv\Scripts\python.exe digitalizador.py --carpeta "C:\Fotos" --salida "C:\Documentos\Mi documento.pdf"
 ```
 
-Para incluir las fotografías enteras, sin recortes:
+## Calidad y conservación
 
-```powershell
-.\.venv\Scripts\python.exe digitalizador.py --carpeta "C:\Fotos" --salida "C:\Documentos\Mi documento.pdf" --sin-recorte
-```
-
-## Pruebas
-
-Con dependencias instaladas:
-
-```powershell
-python -m unittest discover -s tests -v
-```
-
-## Privacidad y limitaciones
-
-- No hay conexión con servidores ni subida de imágenes. No incluye analítica.
-- No se editan, sustituyen ni eliminan las fotos originales.
-- La detección depende del contraste, la iluminación y que el documento sea visible. Comprueba el resultado antes de archivar o descartar el papel.
-- Los ajustes manuales de las cuatro esquinas solo se mantienen en la sesión actual.
-- Las nuevas páginas se guardan como imágenes JPEG de alta calidad (hasta 6000 px por lado) dentro del PDF, por lo que no son píxeles idénticos a la foto original. Se mantiene la apariencia a color, sin filtros de blanco y negro.
-- Las miniaturas son solo para navegación; **no reemplazan la imagen de alta resolución dentro del PDF**.
-- El archivo se guarda como copia revisada, nunca encima del PDF original. Verifica página por página a tamaño real, que el número de páginas sea correcto y mantén al menos una copia independiente antes de eliminar fotos o papel. Un documento borroso desde la cámara no se puede recuperar por aumentar la resolución del PDF.
-- Si una fotografía no puede abrirse, la creación se cancela para no guardar un PDF incompleto. La imagen original no se altera.
+- La aplicación conserva el color, corrige la perspectiva y usa JPEG de alta calidad. En el procesamiento final puede reducir imágenes muy grandes para limitar el tamaño del PDF.
+- Si el detector no reconoce con seguridad una hoja, puede conservar la fotografía completa, para evitar cortar información importante.
+- Un zoom alto no recupera una fotografía desenfocada. Sustitúyela por una nueva captura si el texto se ve borroso al 100 %.
+- Antes de borrar las fotografías originales o el papel, confirma la cantidad de páginas, inspecciona el PDF final al 100 % y guarda **dos copias independientes**.
+- El PDF no contiene texto reconocido y las fotos se procesan localmente.
 
 ## Archivos principales
 
-- `digitalizador.py`: interfaz, importación de fotografías y generación del PDF.
-- `recorte.py`: detector de hojas y esquinas.
-- `editor_pdf.py`: editor y guardado conservador de PDFs existentes.
-- `INICIAR.bat`: inicio sencillo en Windows.
-- `requirements.txt`: dependencias.
-- `LEEME.txt`: instrucciones incluidas desde la versión 1.1.
+- `digitalizador.py`: importación, interfaz y generación de PDF.
+- `recorte.py`: detector automático.
+- `revisor.py` y `revisor_base.py`: matriz, revisión, zoom y edición previa.
+- `editor_pdf.py`: correcciones de un PDF existente.
+- `vistas.py`: utilidades de visualización.
 - `tests/`: pruebas automatizadas.
 
-**Versión**: 1.8, revisión en matriz sin aprobación individual, zoom de resolución final, recortes opcionales, edición de PDF, orden EXIF, sin OCR.
+**Versión actual: 1.8.**
