@@ -792,6 +792,10 @@ def gui_main():
             self.latest_pdf: Path | None = None
             self.export_review = None
             self.export_folder: Path | None = None
+            self.export_progress_window = None
+            self.export_popup_message = None
+            self.export_popup_percent = None
+            self.export_popup_progress = None
 
             style = ttk.Style(root)
             if "clam" in style.theme_names():
@@ -846,6 +850,14 @@ def gui_main():
             self.matrix_btn.pack(side="left")
             self.matrix_btn.state(["disabled"])
 
+            # Franja fija encima de las fotografías: nunca queda fuera de pantalla.
+            footer = ttk.Frame(body)
+            footer.pack(fill="x", pady=(5, 7))
+            self.progress = ttk.Progressbar(footer, mode="determinate", maximum=100)
+            self.progress.pack(fill="x")
+            ttk.Label(footer, textvariable=self.progress_text,
+                      wraplength=900).pack(anchor="w", pady=(4, 0))
+
             panes = ttk.Panedwindow(body, orient="horizontal")
             panes.pack(fill="both", expand=True)
             left = ttk.Frame(panes, width=230)
@@ -881,11 +893,6 @@ def gui_main():
             self.preview_status = tk.StringVar(value="")
             ttk.Label(right, textvariable=self.preview_status, wraplength=640).pack(anchor="w", padx=(16, 0), pady=(7, 0))
 
-            footer = ttk.Frame(body)
-            footer.pack(fill="x", pady=(14, 0))
-            self.progress = ttk.Progressbar(footer, mode="determinate", maximum=100)
-            self.progress.pack(fill="x")
-            ttk.Label(footer, textvariable=self.progress_text).pack(anchor="w", pady=(6, 0))
             root.protocol("WM_DELETE_WINDOW", self._on_close)
             root.after(100, self.poll_events)
 
@@ -1492,6 +1499,75 @@ def gui_main():
         def clean_name(value: str) -> str:
             return normalized_pdf_name(value)
 
+        def _open_export_progress(self, parent, filename: str, pages: int):
+            """Progreso siempre visible, desde ventana principal o matriz."""
+            if (self.export_progress_window is not None
+                    and self.export_progress_window.winfo_exists()):
+                self.export_progress_window.destroy()
+            popup = tk.Toplevel(self.root)
+            self.export_progress_window = popup
+            popup.title("Creando PDF")
+            popup.geometry("490x180")
+            popup.resizable(False, False)
+            popup.transient(parent)
+            # La ventana es informativa, no modal, y permanece encima durante
+            # la exportación; no puede cerrarse sin interrumpir el proceso.
+            popup.attributes("-topmost", True)
+            popup.protocol("WM_DELETE_WINDOW", lambda: None)
+            outer = ttk.Frame(popup, padding=18)
+            outer.pack(fill="both", expand=True)
+            ttk.Label(outer, text="Generando PDF",
+                      font=("Segoe UI", 14, "bold")).pack(anchor="w")
+            ttk.Label(outer, text=filename, foreground="#667085",
+                      wraplength=440).pack(anchor="w", pady=(2, 8))
+            line = ttk.Frame(outer)
+            line.pack(fill="x")
+            self.export_popup_message = tk.StringVar(
+                value=f"Preparando página 1 de {pages}...")
+            self.export_popup_percent = tk.StringVar(value="0 %")
+            ttk.Label(line, textvariable=self.export_popup_message,
+                      wraplength=365).pack(side="left", anchor="w")
+            ttk.Label(line, textvariable=self.export_popup_percent,
+                      font=("Segoe UI", 11, "bold")).pack(side="right")
+            self.export_popup_progress = ttk.Progressbar(
+                outer, mode="indeterminate", maximum=100)
+            self.export_popup_progress.pack(fill="x", pady=(10, 5))
+            self.export_popup_progress.start(12)
+            ttk.Label(outer, text="Se confirma cuando el archivo esté completo.",
+                      foreground="#667085").pack(anchor="w")
+            try:
+                popup.update_idletasks()
+                popup.lift()
+            except tk.TclError:
+                pass
+
+        def _update_export_popup(self, phase: str, done: int = 0,
+                                 total: int = 0, elapsed: float = 0.):
+            popup = self.export_progress_window
+            if popup is None or not popup.winfo_exists():
+                return
+            if phase == "pages":
+                self.export_popup_progress.stop()
+                self.export_popup_progress.configure(
+                    mode="determinate", value=95*done/max(1, total))
+                self.export_popup_percent.set(f"{round(100*done/max(1, total))} %")
+                self.export_popup_message.set(
+                    export_progress_details(done, total, elapsed))
+            else:
+                self.export_popup_progress.stop()
+                self.export_popup_progress.configure(mode="indeterminate")
+                self.export_popup_progress.start(12)
+                self.export_popup_percent.set("100 % páginas")
+                self.export_popup_message.set(
+                    "Verificando PDF..." if phase == "verifying"
+                    else "Guardando PDF...")
+
+        def _close_export_progress(self):
+            popup = self.export_progress_window
+            self.export_progress_window = None
+            if popup is not None and popup.winfo_exists():
+                popup.destroy()
+
         def make_pdf(self, review=None):
             if self.learning_busy:
                 self.progress_text.set("Termina el aprendizaje antes de exportar el PDF.")
@@ -1548,7 +1624,8 @@ def gui_main():
             self.optimize_all_button.state(["disabled"])
             self.learn_button.state(["disabled"])
             self.progress.configure(mode="determinate", maximum=100, value=0)
-            self.progress_text.set(f"Preparando {len(self.paths)} páginas...")
+            self.progress_text.set(f"Preparando PDF · 0/{len(self.paths)} páginas")
+            self._open_export_progress(dialog_parent, target.name, len(self.paths))
             paths = list(self.paths)
             should_crop = True
             manual = dict(self.manual_corners)
@@ -1715,6 +1792,7 @@ def gui_main():
                     detail = export_progress_details(n, total, elapsed)
                     self.progress.configure(value=95*n/max(1, total))
                     self.progress_text.set(f"Exportando PDF · {detail}")
+                    self._update_export_popup("pages", n, total, elapsed)
                     review = self.export_review
                     if review is not None and not review.closed:
                         review.update_export_progress(n, total, elapsed)
@@ -1725,12 +1803,14 @@ def gui_main():
                     self.progress_text.set(
                         "Verificando PDF..." if stage == "verifying"
                         else "Guardando PDF...")
+                    self._update_export_popup(stage)
                     review = self.export_review
                     if review is not None and not review.closed:
                         review.update_export_stage(stage)
                 elif event[0] == "done":
                     info = event[1]
                     self.latest_pdf = Path(info['file'])
+                    self._close_export_progress()
                     self.progress.stop()
                     self.progress.configure(mode="determinate", value=100)
                     self.reset_controls()
@@ -1751,6 +1831,7 @@ def gui_main():
                     if review is None or review.closed:
                         messagebox.showinfo("PDF terminado", details, parent=dialog_parent)
                 elif event[0] == "failed":
+                    self._close_export_progress()
                     self.progress.stop()
                     self.progress.configure(mode="determinate", value=0)
                     self.reset_controls()
@@ -1765,6 +1846,7 @@ def gui_main():
             self.root.after(100, self.poll_events)
 
         def _on_close(self):
+            self._close_export_progress()
             self.crop_editor_token += 1
             self.import_generation += 1
             self.detection_generation += 1
