@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## 1.15.2 (2026-11-01)
+
+- Optimizador ampliado: búsqueda de hasta aproximadamente 10 % del ancho menor de la imagen de trabajo, en lugar de solo 7 a 24 píxeles.
+- Ajuste independiente de los extremos de cada lado, permitiendo corregir la inclinación del borde.
+- Búsqueda en dos niveles (amplia y fina), con preferencia por movimientos pequeños cuando hay puntuaciones similares.
+- Validación final de geometría convexa, ángulos y área, conservando las esquinas previas cuando ninguna alternativa es fiable.
+- Mensaje aclarado: una búsqueda sin mejoras no garantiza que el recorte actual sea correcto.
+- Prueba con una hoja cuyo borde inicial está desplazado más allá del rango antiguo.
+
+
 ## 1.15.1 (2026-11-01)
 
 - Se restaura exclusivamente el detector de esquinas de la v1.14, tras observar peores resultados con el método de color beige introducido en v1.15.

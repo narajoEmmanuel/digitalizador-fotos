@@ -180,6 +180,30 @@ class DigitalizadorTests(unittest.TestCase):
         # Si las esquinas ya coinciden con la hoja, no forzar desplazamientos.
         self.assertIsNone(refinar_esquinas(image, expected))
 
+    def test_refinamiento_amplio_y_lados_inclinados(self):
+        import cv2
+        from recorte import refinar_esquinas
+        h, w = 900, 700
+        photo = np.full((h, w, 3), (35, 92, 135), dtype=np.uint8)
+        page = np.full((600, 440, 3), (240, 234, 218), dtype=np.uint8)
+        for y in range(55, 580, 35):
+            cv2.line(page, (4, y), (431, y), (180, 182, 173), 1)
+        truth = np.float32([[102, 105], [579, 93], [606, 777], [80, 806]])
+        src = np.float32([[0, 0], [439, 0], [439, 599], [0, 599]])
+        t = cv2.getPerspectiveTransform(src, truth)
+        warped = cv2.warpPerspective(page, t, (w, h))
+        mask = cv2.warpPerspective(
+            np.full((600, 440), 255, np.uint8), t, (w, h))
+        photo[mask > 90] = warped[mask > 90]
+        # Ambas puntas de un mismo lado se desvían de forma distinta,
+        # por encima de la búsqueda anterior de unos 24 px.
+        initial = truth + np.float32([[38, 45], [-40, 28], [-35, -38], [41, -45]])
+        found = refinar_esquinas(photo, initial)
+        self.assertIsNotNone(found)
+        old_error = np.mean(np.linalg.norm(initial-truth, axis=1))
+        new_error = np.mean(np.linalg.norm(found-truth, axis=1))
+        self.assertLess(new_error, old_error*.65)
+
     def test_refinamiento_sin_bordes_no_modifica_la_hoja(self):
         from recorte import refinar_esquinas
         image = np.full((750, 600, 3), (210, 210, 210), dtype=np.uint8)

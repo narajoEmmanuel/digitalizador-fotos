@@ -290,7 +290,7 @@ class ReviewWorkspace(PhotoMatrix):
             return
         if found is None:
             self.status.set(
-                "Sin mejora fiable. Se mantienen las esquinas."
+                "No encontré otro borde más fiable. Si ves un error, ajusta las esquinas manualmente."
                 if stage else "No se detectaron esquinas. Puedes optimizar o ajustarlas.")
             return
         scale = np.float32([self.full_size[0] / self.editor_image.width,
@@ -302,7 +302,7 @@ class ReviewWorkspace(PhotoMatrix):
             self.status.set("Se descartó una geometría insegura.")
             return
         if self.points is not None and np.allclose(self.points, points, atol=2):
-            self.status.set("Sin cambios útiles. Se conservan las esquinas.")
+            self.status.set("No encontré un ajuste suficientemente seguro. Mantengo las esquinas.")
             return
         self.points = points.copy()
         self.detected_points = points.copy()

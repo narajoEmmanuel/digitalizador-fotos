@@ -236,11 +236,12 @@ def _interseccion(p: np.ndarray, q: np.ndarray, a: np.ndarray,
 
 
 def refinar_esquinas(rgb: np.ndarray, current: np.ndarray) -> np.ndarray | None:
-    """Segunda búsqueda alrededor de las cuatro esquinas actuales.
+    """Busca una hoja más precisa sin limitarse a desplazar lados en paralelo.
 
-    Ajusta cada lado al contraste real entre hoja y fondo. Solo acepta una
-    geometría convexa y estable con mejora medible. None significa conservar
-    exactamente las esquinas anteriores, no que falte la fotografía.
+    Cada borde puede avanzar o retroceder de forma independiente en sus dos
+    extremos. Se evalúan primero desplazamientos amplios y luego se afina la
+    mejor recta. Esto permite corregir esquinas alejadas e inclinación.
+    Si no existe evidencia suficientemente mejor se conserva el recorte.
     """
     h, w = rgb.shape[:2]
     if min(h, w) < 150:
@@ -254,8 +255,9 @@ def refinar_esquinas(rgb: np.ndarray, current: np.ndarray) -> np.ndarray | None:
     gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3) / 4
     gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3) / 4
     gradient = cv2.magnitude(gx, gy)
-    radius = max(7., min(24., min(w, h)*.022))
-    offsets = np.arange(-radius, radius+.01, 1.5, dtype=np.float32)
+    radius = max(16., min(100., min(w, h)*.095))
+    offsets = np.linspace(-radius, radius, 19, dtype=np.float32)
+    step = float(offsets[1] - offsets[0])
     half = max(2., min(w, h)*.003)
     center = points.mean(axis=0)
     sides = []
@@ -265,23 +267,42 @@ def refinar_esquinas(rgb: np.ndarray, current: np.ndarray) -> np.ndarray | None:
         normal = center - (p+q)/2
         normal /= max(1., float(np.linalg.norm(normal)))
         baseline = _puntuacion_borde(lab, gradient, p, q, normal, 0., half)
-        if baseline is None:
-            return None
-        best_score, best_shift = baseline, 0.
-        for shift in offsets:
-            if abs(shift) < 1.3:
-                continue
-            score = _puntuacion_borde(
-                lab, gradient, p, q, normal, float(shift), half)
-            if score is not None:
-                score -= abs(float(shift)) * .12
-                if score > best_score:
-                    best_score, best_shift = score, float(shift)
-        if best_score-baseline <= max(3.5, .055*baseline):
-            best_shift = 0.
-        if abs(best_shift) > 1.5:
+        baseline = baseline if baseline is not None else 0.
+        best_score = baseline
+        best = (0., 0.)
+
+        def evaluate(a: float, b: float):
+            if abs(a-b) > radius*1.5:
+                return None
+            aa, bb = p + a*normal, q + b*normal
+            score = _puntuacion_borde(lab, gradient, aa, bb, normal, 0., half)
+            if score is None:
+                return None
+            # Movimientos pequeños ganan cuando dos bordes son parecidos.
+            return score - .10*(abs(a)+abs(b))/2 - .04*abs(a-b)
+
+        for a in offsets:
+            for b in offsets:
+                aa, bb = float(a), float(b)
+                score = evaluate(aa, bb)
+                if score is not None and score > best_score:
+                    best_score, best = score, (aa, bb)
+        # Afinar a nivel de 1-2 píxeles, conservando la inclinación encontrada.
+        coarse_best = best
+        fine_offsets = np.linspace(-step, step, 9)
+        for da in fine_offsets:
+            for db in fine_offsets:
+                aa = max(-radius, min(radius, coarse_best[0]+float(da)))
+                bb = max(-radius, min(radius, coarse_best[1]+float(db)))
+                score = evaluate(aa, bb)
+                if score is not None and score > best_score:
+                    best_score, best = score, (aa, bb)
+        if best_score-baseline <= max(4., .07*max(0., baseline)):
+            best = (0., 0.)
+        if max(abs(best[0]), abs(best[1])) > 1.5:
             improved = True
-        sides.append((p + normal*best_shift, q + normal*best_shift))
+        sides.append((p + best[0]*normal, q + best[1]*normal))
+
     if not improved:
         return None
     corners = []
@@ -291,14 +312,22 @@ def refinar_esquinas(rgb: np.ndarray, current: np.ndarray) -> np.ndarray | None:
             return None
         corners.append(intersection)
     refined = np.asarray(corners, dtype=np.float32)
-    if np.max(np.linalg.norm(refined-points, axis=1)) > radius*2.2:
+    if np.max(np.linalg.norm(refined-points, axis=1)) > radius*2.1:
         return None
     if ((refined[:, 0] < 0).any() or (refined[:, 0] >= w).any()
             or (refined[:, 1] < 0).any() or (refined[:, 1] >= h).any()):
         return None
     if not cv2.isContourConvex(refined.reshape(-1, 1, 2)):
         return None
-    new_area = abs(cv2.contourArea(refined)) / (w*h)
-    if abs(new_area/original_area-1) > .16:
+    new_valid, new_area = _validar(refined, w, h)
+    if not new_valid or abs(new_area/original_area-1) > .30:
         return None
+    # Sin puntas agudas: bajo perspectiva es un cuadrilátero, no un polígono libre.
+    for i in range(4):
+        u = refined[(i-1) % 4]-refined[i]
+        v = refined[(i+1) % 4]-refined[i]
+        cosine = abs(float(np.dot(u, v) /
+                           max(1., np.linalg.norm(u)*np.linalg.norm(v))))
+        if cosine > .76:
+            return None
     return refined
