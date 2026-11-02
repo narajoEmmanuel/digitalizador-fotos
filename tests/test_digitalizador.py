@@ -90,6 +90,32 @@ class DigitalizadorTests(unittest.TestCase):
                 self.assertEqual(refine.call_count, 2)
             digitalizador._cached_auto_corners.cache_clear()
 
+    def test_deteccion_automatica_usa_resolucion_del_editor(self):
+        import digitalizador
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            photo = Path(d) / "foto_alta.jpg"
+            Image.new("RGB", (1200, 2400), (60, 91, 120)).save(photo)
+            initial = np.float32([
+                [90, 115], [710, 115], [710, 1480], [90, 1480]])
+            digitalizador._cached_auto_corners.cache_clear()
+            with (mock.patch("digitalizador.find_document_corners",
+                             side_effect=lambda img: initial *
+                             (img.shape[1] / 800.)) as detector,
+                  mock.patch("digitalizador.refinar_esquinas",
+                             return_value=None) as refiner):
+                corners, issue = automatic_page_corners(photo)
+            self.assertIsNone(issue)
+            self.assertIsNotNone(corners)
+            # La base para 1200x2400 debe ser 800x1600, no 525x1050.
+            self.assertEqual(
+                digitalizador.AUTOMATIC_DETECTION_SIDE, 1600)
+            self.assertEqual(refiner.call_count, 1)
+            self.assertGreaterEqual(detector.call_count, 2)
+            self.assertEqual(
+                refiner.call_args.args[0].shape[:2], (1600, 800))
+            digitalizador._cached_auto_corners.cache_clear()
+
     def test_refinamiento_automatico_para_si_no_mejora(self):
         import digitalizador
         candidate = np.float32([[80, 90], [520, 90], [520, 690], [80, 690]])

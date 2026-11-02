@@ -278,7 +278,13 @@ class ReviewWorkspace(PhotoMatrix):
                 if stage:
                     found = refinar_esquinas(original, current)
                 else:
+                    from digitalizador import refine_automatic_corners
                     found = detectar_hoja(original)
+                    if found is not None:
+                        # La acción manual realiza el mismo doble refinamiento
+                        # que el lote, no obliga a pulsar Detectar y Optimizar.
+                        found = refine_automatic_corners(
+                            original, found, max_passes=2)
                 self.big_events.put(("detect", token, index, (stage, found), None))
             except Exception as exc:
                 self.big_events.put(("detect", token, index, (stage, None), str(exc)))
@@ -317,7 +323,7 @@ class ReviewWorkspace(PhotoMatrix):
         self._edited()
         self.status.set(
             "Bordes refinados. Guarda el recorte si quedó bien."
-            if stage else "Esquinas detectadas. Pulsa Optimizar para afinarlas.")
+            if stage else "Esquinas detectadas y optimizadas. Guarda el recorte.")
 
     def save(self):
         from tkinter import messagebox

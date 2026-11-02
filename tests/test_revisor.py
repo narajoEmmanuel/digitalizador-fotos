@@ -221,6 +221,25 @@ class ReviewFlowTests(unittest.TestCase):
             self.assertTrue(panel._edited.called)
         panel.editor_image.close()
 
+    def test_primera_pulsacion_detecta_y_refina_automaticamente(self):
+        from unittest import mock
+        panel = self._fake_corner_panel()
+        baseline = panel.points.copy()
+        improved = baseline + np.float32([
+            [6, 5], [-7, 6], [-6, -5], [6, -5]])
+        with (mock.patch("revisor.detectar_hoja",
+                         return_value=baseline) as detector,
+              mock.patch("digitalizador.refine_automatic_corners",
+                         return_value=improved) as pipeline):
+            panel.reset()
+            panel.poll_large()
+        detector.assert_called_once()
+        pipeline.assert_called_once()
+        self.assertEqual(pipeline.call_args.kwargs["max_passes"], 2)
+        np.testing.assert_allclose(panel.points, improved)
+        self.assertTrue(panel._edited.called)
+        panel.editor_image.close()
+
     def test_refinamiento_inseguro_no_reemplaza_esquinas(self):
         from unittest import mock
         panel = self._fake_corner_panel()

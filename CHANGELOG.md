@@ -1,5 +1,14 @@
 # Historial de cambios
 
+## 1.16.1 (2026-11-01)
+
+- La detección automática analiza la imagen a 1600 px, igual que el editor, en lugar de 1050 px.
+- Se mantiene el detector general anterior y hasta dos optimizaciones conservadoras, con cache compartida entre matriz, editor y PDF.
+- Al pulsar Detectar manualmente se aplican las mismas dos optimizaciones, sin exigir otro clic para un primer buen resultado.
+- Los recortes manuales ya guardados siguen teniendo prioridad y no se alteran silenciosamente.
+- Nuevas pruebas de resolución real utilizada por el detector y de doble optimización en la primera acción manual.
+
+
 ## 1.16 (2026-11-01)
 
 - Detección inicial seguida automáticamente de hasta **dos optimizaciones** por fotografía al importar el lote.

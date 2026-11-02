@@ -280,10 +280,14 @@ def refine_automatic_corners(image: np.ndarray, corners: np.ndarray,
     return best
 
 
+# Compartir el tamaño con el editor de esquinas para obtener los mismos bordes.
+AUTOMATIC_DETECTION_SIDE = 1600
+
+
 @lru_cache(maxsize=4096)
 def _cached_auto_corners(photo: Path, modified_ns: int, size_bytes: int):
     """Detector a la misma escala para matriz, zoom y exportación."""
-    reduced, full_size = preview_image(photo, 1050)
+    reduced, full_size = preview_image(photo, AUTOMATIC_DETECTION_SIDE)
     try:
         image = np.asarray(reduced)
         h, w = image.shape[:2]
@@ -293,7 +297,8 @@ def _cached_auto_corners(photo: Path, modified_ns: int, size_bytes: int):
         quad = ordenar_esquinas(quad)
         if not safe_auto_geometry(quad, w, h):
             return None, "Perspectiva dudosa"
-        # Segunda escala: si el detector cambia de hoja, no deformar el PDF.
+        # Segunda escala de seguridad, después el refinamiento se efectúa
+        # con exactamente el mismo tamaño que usa el editor manual.
         scale = min(1., 700 / max(w, h))
         if scale < 1:
             second_image = cv2.resize(image, (round(w*scale), round(h*scale)),
