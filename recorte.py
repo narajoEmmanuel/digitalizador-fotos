@@ -23,10 +23,36 @@ def ordenar_esquinas(points: np.ndarray) -> np.ndarray:
     return pts
 
 
+def geometria_hoja_valida(quad: np.ndarray) -> bool:
+    """Descarta picos bruscos sin exigir 90 grados en una foto en perspectiva.
+
+    Una hoja puede verse trapezoidal, pero sus cuatro vértices deben formar
+    ángulos moderados y un contorno convexo. No modifica las esquinas.
+    """
+    points = np.asarray(quad, dtype=np.float32).reshape(4, 2)
+    if not np.isfinite(points).all():
+        return False
+    if not cv2.isContourConvex(points.reshape(-1, 1, 2)):
+        return False
+    sides = np.roll(points, -1, axis=0) - points
+    lengths = np.linalg.norm(sides, axis=1)
+    if np.any(lengths < 1):
+        return False
+    for i in range(4):
+        previous = points[(i - 1) % 4] - points[i]
+        following = points[(i + 1) % 4] - points[i]
+        cosine = float(np.dot(previous, following) /
+                       (np.linalg.norm(previous) * np.linalg.norm(following)))
+        # 50 a 130 grados tolera la perspectiva habitual pero no picos.
+        if not np.isfinite(cosine) or abs(cosine) > .643:
+            return False
+    return True
+
+
 def _validar(quad: np.ndarray, width: int, height: int) -> tuple[bool, float]:
     corners = ordenar_esquinas(quad)
     poly = corners.reshape(-1, 1, 2)
-    if not cv2.isContourConvex(poly):
+    if not geometria_hoja_valida(corners):
         return False, 0.0
     area_fraction = abs(cv2.contourArea(poly)) / (width * height)
     if not 0.16 <= area_fraction <= 0.995:
@@ -329,12 +355,7 @@ def refinar_esquinas(rgb: np.ndarray, current: np.ndarray) -> np.ndarray | None:
     # el cambio, para no estirar una hoja por una línea de contenido interna.
     if area_change > .20 and improved_sides < 3:
         return None
-    # Sin puntas agudas: bajo perspectiva es un cuadrilátero, no un polígono libre.
-    for i in range(4):
-        u = refined[(i-1) % 4]-refined[i]
-        v = refined[(i+1) % 4]-refined[i]
-        cosine = abs(float(np.dot(u, v) /
-                           max(1., np.linalg.norm(u)*np.linalg.norm(v))))
-        if cosine > .76:
-            return None
+    # Usar el mismo criterio de ángulos para detectar y para optimizar.
+    if not geometria_hoja_valida(refined):
+        return None
     return refined
