@@ -10,6 +10,14 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 4. Revisa las miniaturas de un vistazo. Selecciona una hoja para verla rápidamente y haz zoom únicamente si necesitas comprobar el detalle de calidad final.
 5. Pulsa **Crear PDF** o **Exportar PDF** desde la matriz. El nombre que escribas en cualquiera de las dos pantallas será el nombre exacto del PDF. Windows solo te pedirá la **carpeta** de destino. **No hay aprobación individual de páginas.**
 
+### Rendimiento
+
+- El lote de fotografías se importa y ordena por EXIF sin congelar la ventana.
+- Se calculan automáticamente las esquinas de **todas las fotografías**, no solo de las 16 visibles, mediante una tarea de fondo con progreso `Preparando esquinas: X/Y`.
+- La matriz y la vista de lectura comparten una caché limitada de 24 imágenes, y al seleccionar una miniatura aparece primero una vista ligera.
+- **Solo al ampliar** una hoja se carga el resultado final a alta resolución, con la misma compresión JPEG utilizada en el PDF.
+- Los giros y recortes manuales actualizan únicamente la página modificada.
+
 ### Matriz de revisión
 
 - **Izquierda (36 %):** matriz de 16 páginas, navegación y **todos los botones** (recortar, detectar, sustituir, insertar, exportar y cerrar). Los controles tienen espacio reservado debajo de las miniaturas, sin desaparecer por el tamaño de la pantalla. El nombre y **Exportar PDF** ocupan filas independientes.
@@ -76,4 +84,4 @@ Uso opcional por consola:
 - `vistas.py`: utilidades de visualización.
 - `tests/`: pruebas automatizadas.
 
-**Versión actual: 1.8.**
+**Versión actual: 1.13.**
