@@ -442,6 +442,38 @@ class ReviewFlowTests(unittest.TestCase):
             panel.get_quick_preview(Path("hoja.jpg"))
         self.assertEqual(len(panel.quick_cache), 0)
 
+    def test_matriz_muestra_avance_de_optimizacion_global(self):
+        from unittest.mock import Mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.closed = False
+        panel.detection_info = Mock()
+        panel.set_batch_optimization_progress(37, 107)
+        self.assertEqual(panel.detection_info.set.call_args.args[0],
+                         "Optimizando lote: 37/107")
+        panel.set_batch_optimization_progress(107, 107)
+        self.assertEqual(panel.detection_info.set.call_args.args[0],
+                         "Optimización completa: 107/107")
+
+    def test_optimizacion_global_no_borra_ajustes_individuales_pendientes(self):
+        from unittest.mock import Mock
+        from revisor import ReviewWorkspace
+        panel = ReviewWorkspace.__new__(ReviewWorkspace)
+        panel.closed = False
+        panel.selected = 0
+        panel.paths = [Path("hoja.jpg")]
+        panel.mode = "edit"
+        panel.dirty = True
+        panel.manual_corners = {}
+        panel.detect_steps = {Path("hoja.jpg"): 1}
+        panel.invalidate_all_previews = Mock()
+        panel._set_mode_controls = Mock()
+        panel.status = Mock()
+        panel.refresh_auto_results()
+        self.assertTrue(panel.dirty)
+        panel.invalidate_all_previews.assert_called_once()
+        self.assertIn("manual", panel.status.set.call_args.args[0])
+
     def test_preparacion_se_oculta_al_terminar_lote(self):
         from unittest.mock import Mock
         from revisor import ReviewWorkspace
