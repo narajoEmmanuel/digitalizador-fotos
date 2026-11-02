@@ -2,6 +2,16 @@
 
 Una aplicación local para **Windows** que convierte fotografías de documentos en un PDF multipágina, conservando **los colores originales**. Detecta los bordes del papel, intenta recortarlo y enderezarlo y permite ajustar manualmente las cuatro esquinas si hace falta. **No utiliza OCR ni transcribe texto**.
 
+## Revisión visual en matriz y vista ampliada (v1.5)
+
+**Antes de crear el PDF:** pulsa **Ver recortes en matriz (16)** para ver 16 hojas procesadas simultáneamente, por bloques. La vista muestra el recorte previsto, cargado en segundo plano. Pulsa cualquier miniatura para abrir directamente el ajuste manual de sus **cuatro esquinas**; vuelve a la matriz cuando quieras revisar más.
+
+**Después de crear el PDF:** pulsa **Vista final ampliada del PDF**. Abre el PDF realmente guardado, sin volver a tomar las fotografías ni modificar su calidad. Utiliza **Ajustar**, **100 %**, **+ / −**, **F11** para pantalla completa, las flechas para cambiar de página y el desplazamiento para ver zonas ampliadas. Se muestra siempre **Página X de Y**.
+
+**Para un PDF antiguo:** usa **Ver PDF en matriz / corregir páginas** para abrir el editor y navegar por 16 miniaturas, seleccionar la página y reemplazarla o insertar otra. Desde el editor, **PDF ampliado** muestra el archivo guardado. Los cambios pendientes no se ven allí hasta guardarlos como una copia nueva.
+
+La matriz usa miniaturas ligeras y la vista ampliada renderiza únicamente la página visible, sin recomprimir ni alterar el PDF. **Las miniaturas no permiten verificar la nitidez real:** amplía cada página importante antes de eliminar las fotos originales.
+
 ## Funciones
 
 ### Corregir un PDF aunque ya eliminaste las fotografías originales
@@ -120,4 +130,4 @@ python -m unittest discover -s tests -v
 - `LEEME.txt`: instrucciones incluidas desde la versión 1.1.
 - `tests/`: pruebas automatizadas.
 
-**Versión**: 1.3, editor de PDF por página y vista previa optimizada, orden EXIF, sin OCR.
+**Versión**: 1.5, matriz de recortes y PDF, vista final ampliada, editor conservador, orden EXIF, sin OCR.
