@@ -1509,7 +1509,9 @@ def gui_main():
             popup.title("Creando PDF")
             popup.geometry("490x180")
             popup.resizable(False, False)
-            popup.transient(parent)
+            # Se vincula a la ventana principal para seguir visible incluso
+            # si se cierra la matriz mientras se genera el PDF.
+            popup.transient(self.root)
             # La ventana es informativa, no modal, y permanece encima durante
             # la exportación; no puede cerrarse sin interrumpir el proceso.
             popup.attributes("-topmost", True)
