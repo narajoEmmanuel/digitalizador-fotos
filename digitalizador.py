@@ -21,7 +21,7 @@ import traceback
 from pathlib import Path
 from typing import Callable
 
-from recorte import detectar_hoja, ordenar_esquinas
+from recorte import detectar_hoja, ordenar_esquinas, refinar_esquinas
 
 import cv2
 import numpy as np
@@ -252,6 +252,34 @@ def safe_auto_geometry(quad: np.ndarray, width: int, height: int) -> bool:
     return True
 
 
+def refine_automatic_corners(image: np.ndarray, corners: np.ndarray,
+                             max_passes: int = 2) -> np.ndarray:
+    """Refina hasta dos veces con geometría conservadora y parada temprana.
+
+    Devuelve el último cuadrilátero válido; no descarta una detección correcta
+    cuando la búsqueda posterior no consigue una mejora fiable.
+    """
+    h, w = image.shape[:2]
+    best = ordenar_esquinas(corners).astype(np.float32, copy=True)
+    if not safe_auto_geometry(best, w, h):
+        return best
+    for _ in range(max_passes):
+        try:
+            candidate = refinar_esquinas(image, best)
+        except (cv2.error, ValueError, np.linalg.LinAlgError):
+            break
+        if candidate is None:
+            break
+        candidate = ordenar_esquinas(candidate).astype(np.float32)
+        if not safe_auto_geometry(candidate, w, h):
+            break
+        displacement = np.linalg.norm(candidate - best, axis=1)
+        if float(np.max(displacement)) < 1.5:
+            break
+        best = candidate
+    return best
+
+
 @lru_cache(maxsize=4096)
 def _cached_auto_corners(photo: Path, modified_ns: int, size_bytes: int):
     """Detector a la misma escala para matriz, zoom y exportación."""
@@ -276,6 +304,10 @@ def _cached_auto_corners(photo: Path, modified_ns: int, size_bytes: int):
             second = ordenar_esquinas(second) / scale
             if np.max(np.linalg.norm(quad - second, axis=1)) > max(18., .035*max(w, h)):
                 return None, "Esquinas inestables"
+        # Tras confirmar la hoja a dos escalas, afinar automáticamente
+        # hasta dos veces sobre la misma imagen utilizada por la matriz.
+        # La última geometría segura queda memorizada para el PDF final.
+        quad = refine_automatic_corners(image, quad, max_passes=2)
         full_w, full_h = full_size
         corners = quad * np.float32([full_w / w, full_h / h])
         return corners.astype(np.float32), None

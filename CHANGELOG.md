@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## 1.16 (2026-11-01)
+
+- Detección inicial seguida automáticamente de hasta **dos optimizaciones** por fotografía al importar el lote.
+- Parada temprana si no aparece una mejora fiable; se conserva siempre el último cuadrilátero válido.
+- Validación geométrica posterior a cada pasada para evitar aplicar recortes distorsionados.
+- La caché comparte las esquinas optimizadas entre miniaturas, vista ampliada y exportación, sin recalcular al generar el PDF.
+- La revisión manual pasa directamente a Optimizar cuando ya hay una detección automática válida.
+- Pruebas de doble refinamiento, parada temprana, geometría insegura y reutilización en la exportación.
+
+
 ## 1.15.2 (2026-11-01)
 
 - Optimizador ampliado: búsqueda de hasta aproximadamente 10 % del ancho menor de la imagen de trabajo, en lugar de solo 7 a 24 píxeles.

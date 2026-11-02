@@ -219,8 +219,15 @@ class ReviewWorkspace(PhotoMatrix):
             return "break"
 
     def _load_editor(self, preview, size, detected):
-        """El editor de cuatro esquinas se carga solo al activar la herramienta."""
+        """La geometría automática llega ya refinada, no debe redetectarse."""
         super()._load_editor(preview, size, detected)
+        if (self.selected is not None and detected is not None
+                and self.auto_crop
+                and self.paths[self.selected] not in self.manual_corners):
+            # El botón manual debe seguir optimizando, no regresar a la
+            # primera detección que ya fue mejorada en segundo plano.
+            self.detect_steps[self.paths[self.selected]] = 1
+        self._set_mode_controls()
 
     def _page_caption(self, index):
         warning = self.crop_warnings.get(self.paths[index])

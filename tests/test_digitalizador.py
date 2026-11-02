@@ -62,6 +62,53 @@ class DigitalizadorTests(unittest.TestCase):
             self.assertEqual(detector.call_count, calls)
             digitalizador._cached_auto_corners.cache_clear()
 
+    def test_dos_optimizaciones_automaticas_y_cache_para_pdf(self):
+        import digitalizador
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "hoja.jpg"
+            Image.new("RGB", (700, 950), (180, 180, 180)).save(path)
+            base = np.float32([[82, 105], [608, 100], [610, 829], [80, 832]])
+            first = base + np.float32([[-4, -2], [3, -2], [3, 4], [-4, 4]])
+            second = first + np.float32([[-2, -1], [2, -1], [2, 2], [-2, 2]])
+            digitalizador._cached_auto_corners.cache_clear()
+            def detector(frame):
+                factor = frame.shape[1] / 700.
+                return base * factor
+            with (mock.patch("digitalizador.find_document_corners", side_effect=detector) as detect,
+                  mock.patch("digitalizador.refinar_esquinas",
+                             side_effect=[first, second]) as refine):
+                selected, problem = automatic_page_corners(path)
+                self.assertIsNone(problem)
+                np.testing.assert_allclose(selected, second, atol=1)
+                self.assertEqual(refine.call_count, 2)
+                count = detect.call_count
+                # La vista y el PDF usan esquinas ya optimizadas del mismo cache.
+                automatic_page_corners(path)
+                preview, _ = prepare_page(path, auto_crop=True)
+                preview.close()
+                self.assertEqual(detect.call_count, count)
+                self.assertEqual(refine.call_count, 2)
+            digitalizador._cached_auto_corners.cache_clear()
+
+    def test_refinamiento_automatico_para_si_no_mejora(self):
+        import digitalizador
+        candidate = np.float32([[80, 90], [520, 90], [520, 690], [80, 690]])
+        frame = np.zeros((800, 600, 3), np.uint8)
+        with mock.patch("digitalizador.refinar_esquinas", return_value=None) as refine:
+            found = digitalizador.refine_automatic_corners(frame, candidate)
+        np.testing.assert_array_equal(found, candidate)
+        refine.assert_called_once_with(frame, mock.ANY)
+
+    def test_refinamiento_automatico_descarta_geometria_insegura(self):
+        import digitalizador
+        candidate = np.float32([[80, 90], [520, 90], [520, 690], [80, 690]])
+        unsafe = np.float32([[80, 90], [520, 90], [60, 80], [80, 690]])
+        frame = np.zeros((800, 600, 3), np.uint8)
+        with mock.patch("digitalizador.refinar_esquinas", return_value=unsafe) as refine:
+            found = digitalizador.refine_automatic_corners(frame, candidate)
+        np.testing.assert_array_equal(found, candidate)
+        self.assertEqual(refine.call_count, 1)
+
     def test_deteccion_compartida_entre_hilos(self):
         import time
         from concurrent.futures import ThreadPoolExecutor
