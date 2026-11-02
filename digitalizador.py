@@ -689,6 +689,7 @@ def gui_main():
             self.detection_done = 0
             self.detection_total = 0
             self.detection_warnings = 0
+            self.batch_optimizing = False
             self.active_review = None
             self.page_position = tk.StringVar(value='Página 0 de 0')
             self.latest_pdf: Path | None = None
@@ -734,6 +735,11 @@ def gui_main():
             self.crop_check.pack(side="left")
             ttk.Label(crop_row, textvariable=self.crop_status,
                       foreground="#667085").pack(side="left", padx=(12, 0))
+            self.optimize_all_button = ttk.Button(
+                crop_row, text="Optimizar todas", style="Small.TButton",
+                command=self.optimize_all_pages)
+            self.optimize_all_button.pack(side="left", padx=(12, 0))
+            self.optimize_all_button.state(["disabled"])
             self.manual_button = ttk.Button(crop_row, text="Editar esquinas", style="Small.TButton", command=self.adjust_corners)
             self.manual_button.pack(side="right")
             self.manual_button.state(["disabled"])
@@ -814,6 +820,8 @@ def gui_main():
             self.detection_done = 0
             self.detection_total = len(chosen_paths)
             self.detection_warnings = 0
+            self.batch_optimizing = False
+            clear_automatic_optimizations()
             if self.active_review is not None and not self.active_review.closed:
                 self.active_review.close()
             self.active_review = None
@@ -836,6 +844,7 @@ def gui_main():
             self.make_button.state(["!disabled"] if self.paths else ["disabled"])
             self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
             self.matrix_btn.state(["!disabled"] if self.paths else ["disabled"])
+            self.optimize_all_button.state(["!disabled"] if self.paths else ["disabled"])
             if self.paths:
                 if self.auto_crop_enabled:
                     self.crop_status.set(f"Optimizando: 0/{len(self.paths)}")
@@ -851,7 +860,9 @@ def gui_main():
                 messagebox.showinfo("No hay fotografías", "Esta carpeta no contiene fotos JPG, PNG o HEIC compatibles.")
 
         def on_auto_crop_change(self):
-            """Activar/desactivar el recorte para toda la sesión y su matriz."""
+            """La casilla solo enciende/apaga; Optimizar todas es otra acción."""
+            if self.batch_optimizing:
+                return
             enabled = bool(self.auto_crop.get())
             self.auto_crop_enabled = enabled
             self.preview_cache.clear()
@@ -864,6 +875,7 @@ def gui_main():
                 if enabled:
                     # Nueva detección solicitada explícitamente por el usuario.
                     _cached_auto_corners.cache_clear()
+                    clear_automatic_optimizations()
                     self.detection_total = len(self.paths)
                     self.crop_status.set(f"Optimizando: 0/{len(self.paths)}")
                     self._preload_detections(list(self.paths), self.detection_generation)
@@ -880,6 +892,65 @@ def gui_main():
             else:
                 self.crop_status.set("Activo" if enabled else "Desactivado")
             self.refresh_preview()
+
+        def optimize_all_pages(self):
+            """Optimización adicional de todo el lote, con progreso visible.
+
+            Nunca modifica manual_corners: cada hoja corregida manualmente
+            mantiene prioridad sobre el detector automático.
+            """
+            if (self.busy or self.import_loading or self.batch_optimizing
+                    or not self.paths):
+                return
+            if not self.auto_crop_enabled:
+                self.auto_crop.set(True)
+                self.auto_crop_enabled = True
+                review = self.active_review
+                if review is not None and not review.closed:
+                    review.set_auto_crop(True)
+            self.detection_generation += 1
+            generation = self.detection_generation
+            self.batch_optimizing = True
+            self.detection_done = 0
+            self.detection_total = len(self.paths)
+            self.detection_warnings = 0
+            self.make_button.state(["disabled"])
+            self.optimize_all_button.state(["disabled"])
+            self.crop_check.state(["disabled"])
+            self.folder_button.state(["disabled"])
+            self.progress.configure(mode="determinate", maximum=100, value=0)
+            self.progress_text.set(f"Optimizando 0/{len(self.paths)} páginas · 0 %")
+            self.crop_status.set(f"Optimizando: 0/{len(self.paths)}")
+            review = self.active_review
+            if review is not None and not review.closed:
+                review.set_batch_optimization_progress(0, len(self.paths))
+            photos = list(self.paths)
+            # Solo se omiten los recortes manuales, para no perder correcciones.
+            manually_fixed = set(self.manual_corners)
+            def scan():
+                improved = 0
+                failed = 0
+                skipped = 0
+                for count, photo in enumerate(photos, 1):
+                    if generation != self.detection_generation:
+                        return
+                    while self.detection_paused.is_set():
+                        if generation != self.detection_generation:
+                            return
+                        time.sleep(.12)
+                    if photo in manually_fixed:
+                        skipped += 1
+                    else:
+                        try:
+                            changed, _problem = optimize_photo_corners(photo)
+                            improved += bool(changed)
+                            failed += bool(_problem)
+                        except Exception:
+                            failed += 1
+                    self.events.put((
+                        "batch_optimize", generation, count, len(photos),
+                        improved, failed, skipped))
+            self.detection_pool.submit(scan)
 
         def _preload_detections(self, photos: list[Path], generation: int):
             """Precalcular las esquinas de todo el lote sin bloquear la interfaz."""
@@ -1177,6 +1248,7 @@ def gui_main():
             self.matrix_btn.state(["disabled"])
             self.name_entry.state(["disabled"])
             self.crop_check.state(["disabled"])
+            self.optimize_all_button.state(["disabled"])
             self.progress.configure(mode="determinate", maximum=100, value=0)
             self.progress_text.set(f"Preparando {len(self.paths)} páginas...")
             paths = list(self.paths)
@@ -1231,6 +1303,40 @@ def gui_main():
                             elif result:
                                 self._show_preview(key[0], *result)
                                 self._prefetch_photo_neighbors(current[0])
+                elif event[0] == "batch_optimize":
+                    _, generation, done, total, improved, failed, skipped = event
+                    if generation != self.detection_generation or not self.batch_optimizing:
+                        continue
+                    percent = round(100 * done/max(1, total))
+                    self.progress.configure(value=percent)
+                    self.progress_text.set(
+                        f"Optimizando {done}/{total} páginas · {percent} %")
+                    self.crop_status.set(f"Optimizando: {done}/{total}")
+                    review = self.active_review
+                    if review is not None and not review.closed:
+                        review.set_batch_optimization_progress(done, total)
+                    if done == total:
+                        self.batch_optimizing = False
+                        self.detection_done = done
+                        self.detection_total = total
+                        self.detection_warnings = failed
+                        self.optimize_all_button.state(["!disabled"])
+                        self.make_button.state(["!disabled"])
+                        self.crop_check.state(["!disabled"])
+                        self.folder_button.state(["!disabled"])
+                        self.crop_status.set(f"Listo: {total}/{total}")
+                        self.progress_text.set(
+                            f"Optimización finalizada: {improved} mejoradas, "
+                            f"{skipped} recortes manuales conservados"
+                            + (f", {failed} sin detección segura." if failed else "."))
+                        # Invalidar imágenes de trabajo antiguas para que la
+                        # matriz y el visor muestren las nuevas esquinas.
+                        self.preview_cache.clear()
+                        self.preview_pending.clear()
+                        self.preview_token += 1
+                        self.refresh_preview()
+                        if review is not None and not review.closed:
+                            review.refresh_auto_results()
                 elif event[0] == "batch_detection":
                     _, generation, done, total, warnings = event
                     if generation == self.detection_generation and self.auto_crop_enabled:
@@ -1321,6 +1427,8 @@ def gui_main():
             self.matrix_btn.state(["!disabled"] if self.paths else ["disabled"])
             self.name_entry.state(["!disabled"])
             self.crop_check.state(["!disabled"])
+            self.optimize_all_button.state(
+                ["disabled"] if not self.paths or self.batch_optimizing else ["!disabled"])
 
     root = tk.Tk()
     DigitalizadorApp(root)
