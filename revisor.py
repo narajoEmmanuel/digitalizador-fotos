@@ -136,19 +136,26 @@ class ReviewWorkspace(PhotoMatrix):
         self.open_pdf_button.pack_forget()
         self.export_button.state(["disabled"])
         self.export_message_label.configure(foreground="#344054")
-        self.export_message.set(f"Exportando {target.name} · 0/{total}")
+        self.export_message.set(f"Preparando {target.name} · 0/{total} páginas")
         self.export_progress.configure(mode="indeterminate")
         self.export_progress.pack(fill="x", pady=(4, 0))
         self.export_progress.start(12)
 
-    def update_export_progress(self, done: int, total: int):
+    def update_export_progress(self, done: int, total: int, elapsed: float = 0):
+        from digitalizador import export_progress_details
         self.export_progress.stop()
         self.export_progress.configure(mode="determinate")
-        # Mantener 95 % hasta que se valide y guarde el archivo.
+        # 95 % de barra como máximo mientras se generan páginas.
+        # El texto indica porcentaje de páginas, no una duración garantizada.
         self.export_progress.configure(value=95 * done / max(1, total))
-        self.export_message.set(
-            f"Verificando PDF... {done}/{total}" if done >= total
-            else f"Exportando PDF · {done}/{total}")
+        self.export_message.set(export_progress_details(done, total, elapsed))
+
+    def update_export_stage(self, stage: str):
+        self.export_progress.stop()
+        self.export_progress.configure(mode="indeterminate")
+        self.export_progress.start(12)
+        self.export_message.set("Verificando páginas del PDF..."
+                                if stage == "verifying" else "Guardando PDF...")
 
     def finish_export(self, path: Path, pages: int, uncropped: int = 0):
         from digitalizador import export_success_text
