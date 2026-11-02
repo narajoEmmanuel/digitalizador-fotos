@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## 1.18.1 (2026-11-02)
+
+- Eliminado el interruptor **Recorte automático** de la pantalla principal. La aplicación utiliza siempre la detección automática al cargar fotografías, revisar y exportar.
+- Conservados **Optimizar todas** en la ventana principal y la optimización individual dentro de la matriz.
+- Eliminados estados y métodos de alternancia del recorte que podían producir comportamientos inconsistentes.
+- Validación geométrica compartida en detección inicial y refinamiento. Se rechazan cuadriláteros con picos excesivos, ángulos demasiado agudos, bordes cruzados o formas no convexas.
+- Si la optimización propone un polígono inseguro, se conservan las últimas esquinas válidas. Sigue permitiéndose el ajuste manual.
+- Pruebas para polígonos puntiagudos, cuadriláteros con perspectiva razonable y ausencia del checkbox de la GUI.
+
+
 ## 1.18 (2026-11-02)
 
 - Nuevo botón **Optimizar todas** en pantalla principal, independiente del interruptor **Recorte automático**.
