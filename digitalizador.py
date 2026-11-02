@@ -245,7 +245,7 @@ def safe_auto_geometry(quad: np.ndarray, width: int, height: int) -> bool:
     return True
 
 
-@lru_cache(maxsize=160)
+@lru_cache(maxsize=4096)
 def _cached_auto_corners(photo: Path, modified_ns: int, size_bytes: int):
     """Detector a la misma escala para matriz, zoom y exportación."""
     reduced, full_size = preview_image(photo, 1050)
@@ -492,6 +492,8 @@ def gui_main():
             self.preview_token = 0
             self.preview_after = None
             self.preview_pool = ThreadPoolExecutor(max_workers=2)
+            self.detection_pool = ThreadPoolExecutor(max_workers=1)
+            self.detection_generation = 0
             self.page_position = tk.StringVar(value='Página 0 de 0')
             self.crop_loading = False
             self.latest_pdf: Path | None = None
@@ -597,6 +599,7 @@ def gui_main():
                 return
             self.folder = chosen_folder
             self.paths = chosen_paths
+            self.detection_generation += 1
             self.manual_corners = {}
             self.rotations = {}
             self.preview_cache.clear()
@@ -617,12 +620,34 @@ def gui_main():
             self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
             self.matrix_btn.state(["!disabled"] if self.paths else ["disabled"])
             if self.paths:
+                # Un único barrido inicial, también para páginas fuera de la matriz visible.
+                self._preload_detections(list(self.paths), self.detection_generation)
                 self.listbox.selection_set(0)
                 self.refresh_preview()
             else:
                 self.set_preview(self.preview_orig, None, "Original")
                 self.set_preview(self.preview_result, None, "Procesado")
                 messagebox.showinfo("No hay fotografías", "Esta carpeta no contiene fotos JPG, PNG o HEIC compatibles.")
+
+        def _preload_detections(self, photos: list[Path], generation: int):
+            """Precalcular las esquinas de todo el lote sin bloquear la interfaz."""
+            self.progress_text.set(f"Preparando recortes: 0/{len(photos)}")
+            def scan():
+                processed = 0
+                warnings = 0
+                for photo in photos:
+                    if generation != self.detection_generation:
+                        return
+                    try:
+                        _corners, issue = automatic_page_corners(photo)
+                        warnings += bool(issue)
+                    except Exception:
+                        warnings += 1
+                    processed += 1
+                    if processed % 3 == 0 or processed == len(photos):
+                        self.events.put(("batch_detection", generation,
+                                         processed, len(photos), warnings))
+            self.detection_pool.submit(scan)
 
         def edit_existing_pdf(self):
             from editor_pdf import open_editor
@@ -647,6 +672,8 @@ def gui_main():
             self.progress_text.set(f"{len(self.paths)} páginas listas para revisión y exportación")
 
         def _replace_review_photo(self, index, new_path):
+            # Las fotos insertadas o sustituidas también se analizan una sola vez.
+            self.detection_pool.submit(automatic_page_corners, new_path)
             old_path = self.paths[index]
             self.rotations.pop(old_path, None)
             self.manual_corners.pop(old_path, None)
@@ -654,6 +681,7 @@ def gui_main():
             self._sync_review_list(index)
 
         def _insert_review_photo(self, index, new_path):
+            self.detection_pool.submit(automatic_page_corners, new_path)
             self.paths.insert(index, new_path)
             self._sync_review_list(index)
 
@@ -1032,6 +1060,12 @@ def gui_main():
                             elif result:
                                 self._show_preview(key[0], *result)
                                 self._prefetch_photo_neighbors(current[0])
+                elif event[0] == "batch_detection":
+                    _, generation, done, total, warnings = event
+                    if generation == self.detection_generation:
+                        self.progress_text.set(
+                            f"Recortes preparados: {done}/{total}"
+                            + (f" · {warnings} para revisar" if warnings else ""))
                 elif event[0] == 'crop_ready':
                     _, photo, preview, size, detection, failure = event
                     self.crop_loading = False
