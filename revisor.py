@@ -122,7 +122,7 @@ class ReviewWorkspace(PhotoMatrix):
         self.export_progress.stop()
         self.export_progress.configure(mode="determinate")
         # Mantener 95 % hasta que se valide y guarde el archivo.
-        self.export_progress["value"] = 95 * done / max(1, total)
+        self.export_progress.configure(value=95 * done / max(1, total))
         self.export_message.set(
             f"Verificando PDF... {done}/{total}" if done >= total
             else f"Exportando PDF · {done}/{total}")
@@ -131,7 +131,7 @@ class ReviewWorkspace(PhotoMatrix):
         from digitalizador import export_success_text
         self.export_progress.stop()
         self.export_progress.configure(mode="determinate")
-        self.export_progress["value"] = 100
+        self.export_progress.configure(value=100)
         self.exported_file = Path(path)
         self.export_button.state(["!disabled"])
         self.export_message_label.configure(
