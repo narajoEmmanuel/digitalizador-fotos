@@ -1,5 +1,19 @@
 # Digitalizador de Fotos
 
+## Revisión completa antes de exportar (v1.6)
+
+Elige primero una carpeta con fotografías del iPhone. La importación inicial las ordena por **hora original EXIF**. Después pulsa **Ver recortes en matriz (16)**:
+
+1. Se abre una ventana maximizada. A la izquierda hay 16 miniaturas por bloque; a la derecha está la hoja elegida con sus cuatro esquinas editables.
+2. Ajusta los cuatro puntos y pulsa **Guardar recorte**. La matriz no se cierra y el recorte se actualiza.
+3. Pulsa **Vista ampliada** para comprobar **antes de exportar** el recorte real, calculado desde la fotografía de alta resolución. Utiliza **Ajustar**, **100 %**, **+**, **−** y arrastra la vista para examinar el texto.
+4. Si una foto quedó borrosa, pulsa **Sustituir foto**. Para una página faltante, selecciona otra hoja y pulsa **Insertar antes** o **Insertar después**. Las fotos nuevas no necesitan EXIF y mantienen la posición que hayas elegido.
+5. Marca **Aprobar ✓** para identificar hojas revisadas. El sistema advierte si aún hay hojas sin aprobar.
+6. Cuando estés satisfecho, pulsa **Exportar PDF después de revisar**, elige nombre y ubicación. Se mantiene el color y el recorte de alta resolución. Ninguna fotografía original se modifica.
+
+La función separada **Abrir PDF existente y corregir páginas** queda reservada para correcciones posteriores. **La vista ampliada del revisor no requiere crear antes un PDF.**
+
+
 Una aplicación local para **Windows** que convierte fotografías de documentos en un PDF multipágina, conservando **los colores originales**. Detecta los bordes del papel, intenta recortarlo y enderezarlo y permite ajustar manualmente las cuatro esquinas si hace falta. **No utiliza OCR ni transcribe texto**.
 
 ## Revisión visual en matriz y vista ampliada (v1.5)
