@@ -1,5 +1,14 @@
 # Historial de cambios
 
+## 1.13 (2026-11-01)
+
+- Importación y EXIF en segundo plano con fechas de captura reutilizadas.
+- Detección de esquinas inicial para todas las fotos, caché reutilizable y contador de progreso.
+- Caché de miniaturas y vistas procesadas (24 imágenes) para cambiar de página rápidamente.
+- Vista ligera inmediata; fotografía original a alta resolución solo al aplicar zoom.
+- Tareas separadas para miniaturas, detalle e inspección inicial, y cancelación al cerrar.
+
+
 ## 1.12 (2026-11-01)
 
 - Botones de giro de 90° a izquierda o derecha en la matriz, sin modificar archivos originales.
