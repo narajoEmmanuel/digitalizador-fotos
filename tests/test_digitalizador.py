@@ -62,6 +62,25 @@ class DigitalizadorTests(unittest.TestCase):
             self.assertEqual(detector.call_count, calls)
             digitalizador._cached_auto_corners.cache_clear()
 
+    def test_deteccion_compartida_entre_hilos(self):
+        import time
+        from concurrent.futures import ThreadPoolExecutor
+        import digitalizador
+        with tempfile.TemporaryDirectory() as d:
+            photo = Path(d) / "prueba.jpg"
+            Image.new("RGB", (400, 550), "white").save(photo)
+            calls = []
+            def slow_detector(*_args):
+                calls.append(1)
+                time.sleep(.06)
+                return None, "Sin esquinas"
+            with mock.patch("digitalizador._cached_auto_corners", side_effect=slow_detector):
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    results = list(pool.map(digitalizador.automatic_page_corners, [photo]*4))
+            self.assertEqual(len(calls), 1)
+            self.assertTrue(all(quad is None and reason == "Sin esquinas"
+                                for quad, reason in results))
+
     def test_orden_por_captura_no_por_nombre_ni_fecha_de_descarga(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
