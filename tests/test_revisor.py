@@ -175,7 +175,7 @@ class ReviewFlowTests(unittest.TestCase):
         panel._pending = Mock(return_value=True)
         panel.on_export = Mock()
         panel.export()
-        panel.on_export.assert_called_once_with()
+        panel.on_export.assert_called_once_with(panel)
         self.assertFalse(hasattr(panel, "approved"))
         self.assertFalse(hasattr(ReviewWorkspace, "approve"))
 
@@ -186,6 +186,19 @@ class ReviewFlowTests(unittest.TestCase):
         panel.dirty = False
         panel._edited()
         self.assertTrue(panel.dirty)
+
+    def test_previsualiza_el_recorte_manual_con_automatico_apagado(self):
+        from revisor import final_export_preview
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d) / "foto.jpg"
+            arr = np.full((640, 480, 3), (160, 10, 10), dtype=np.uint8)
+            arr[80:550, 70:400] = [244, 244, 229]
+            Image.fromarray(arr).save(source)
+            corners = np.float32([[70, 80], [399, 80], [399, 549], [70, 549]])
+            image = final_export_preview(source, auto_crop=False, corners=corners)
+            self.assertLess(image.width, 350)
+            self.assertLess(image.height, 490)
+            image.close()
 
     def test_no_permite_esquinas_cruzadas(self):
         with self.assertRaises(ValueError):

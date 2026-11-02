@@ -8,7 +8,7 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 2. Escribe el nombre del PDF.
 3. Pulsa **Revisar en matriz** para ver 16 páginas por bloque.
 4. Revisa rápidamente todas las miniaturas. Selecciona solo las páginas dudosas para ver el resultado a resolución final, ampliar o corregir.
-5. Pulsa **Crear PDF** o **Exportar PDF** desde la matriz. **No hay aprobación individual de páginas.**
+5. Pulsa **Crear PDF** o **Exportar PDF** desde la matriz. El nombre se puede editar en cualquiera de las dos pantallas; ambas comparten el mismo valor. El archivo se guarda en la carpeta que elijas en el diálogo. **No hay aprobación individual de páginas.**
 
 ### Matriz de revisión
 
@@ -20,7 +20,7 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 - **Detectar:** recalcula el contorno de la página actual. **Guardar recorte:** guarda solo las esquinas de esa hoja sin desactivar la herramienta, para continuar con otras. Al desactivar las esquinas, aparece la imagen final con zoom.
 - **Sustituir:** cambia la fotografía seleccionada. **+ Antes** y **+ Después:** insertan una página en el lugar indicado.
 
-El contenido de la matriz se calcula a tamaño ligero. La vista individual de calidad procede de la fotografía original y reproduce la compresión JPEG que se integrará en el PDF. La edición no modifica ni borra las fotos originales. Los cambios pendientes duran únicamente la sesión, así que exporta antes de cerrar la aplicación.
+El contenido de la matriz se calcula a tamaño ligero. La vista individual de calidad procede de la fotografía original y reproduce la compresión JPEG que se integrará en el PDF. El diálogo para exportar aparece delante de la matriz, el progreso se muestra allí y se verifica que el PDF guardado tiene todas sus páginas e imágenes. Nunca se sobrescribe automáticamente un PDF existente. La edición no modifica ni borra las fotos originales. Los cambios pendientes duran únicamente la sesión, así que exporta antes de cerrar la aplicación.
 
 ### Corregir un PDF ya existente
 

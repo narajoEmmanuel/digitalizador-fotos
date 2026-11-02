@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## 1.9 (2026-11-01)
+
+- Corregido el diálogo de exportación de la matriz, ahora se abre delante de ella y muestra el progreso y el resultado.
+- El campo de nombre del PDF es editable en la matriz, sincronizado con la ventana principal; el nombre elegido al guardar se conserva.
+- Validación del nombre final, extensión PDF y bloqueo de sobrescritura accidental.
+- Verificación de páginas e imágenes del PDF temporal antes de publicarlo.
+- El recorte manual se respeta aunque el recorte automático esté desactivado, sin cambiar el modo de las demás páginas.
+- Nuevas pruebas de nombre, metadatos, recorte y exportación.
+
+
 ## 1.8.2 (2026-11-01)
 
 - Interruptor persistente **Activar esquinas / Desactivar esquinas** en el panel izquierdo.

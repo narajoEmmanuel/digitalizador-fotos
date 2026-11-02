@@ -38,7 +38,8 @@ class ReviewWorkspace(PhotoMatrix):
     """Matriz y edición continua, antes de exportar el documento definitivo."""
 
     def __init__(self, parent, paths, preview_provider, on_save, photo_loader,
-                 manual_corners, on_replace, on_insert, on_export, auto_crop=True):
+                 manual_corners, on_replace, on_insert, on_export, auto_crop=True,
+                 pdf_name=None):
         self.mode = "preview"
         self.corners_enabled = False  # Preferencia para todas las hojas del revisor.
         self.dirty = False
@@ -52,6 +53,7 @@ class ReviewWorkspace(PhotoMatrix):
         self.drag_start = None
         self.on_replace, self.on_insert, self.on_export = on_replace, on_insert, on_export
         self.auto_crop = auto_crop
+        self.pdf_name = pdf_name
         super().__init__(parent, paths, preview_provider, on_save, photo_loader, manual_corners)
         from tkinter import ttk
         self.window.title("Revisión de páginas")
@@ -81,7 +83,12 @@ class ReviewWorkspace(PhotoMatrix):
             fill="x", pady=(4, 0), before=self.status_widget)
         footer = ttk.Frame(self.controls)
         footer.pack(fill="x", pady=(6, 0))
-        ttk.Button(footer, text="Exportar PDF", command=self.export).pack(side="right")
+        if self.pdf_name is not None:
+            ttk.Label(footer, text="Nombre").pack(side="left", padx=(0, 4))
+            ttk.Entry(footer, textvariable=self.pdf_name, width=23).pack(
+                side="left", fill="x", expand=True, padx=(0, 6))
+        self.export_button = ttk.Button(footer, text="Exportar PDF", command=self.export)
+        self.export_button.pack(side="right")
         self._set_mode_controls()
         self.status.set("")
         if self.paths:
@@ -179,7 +186,6 @@ class ReviewWorkspace(PhotoMatrix):
             messagebox.showwarning("No se pudo guardar", str(exc), parent=self.window)
             return False
         self.dirty = False
-        self.auto_crop = True
         self.saved_indices.add(self.selected)
         self.refresh_item(self.selected)
         self._highlight_selection()
@@ -247,8 +253,8 @@ class ReviewWorkspace(PhotoMatrix):
         self.status.set("Recorte sin guardar" if self.dirty else "")
         def load():
             try:
-                im = final_export_preview(photo, auto_crop=self.auto_crop,
-                    corners=quad if self.auto_crop else None)
+                im = final_export_preview(photo,
+                    auto_crop=self.auto_crop or quad is not None, corners=quad)
                 self.big_events.put((token, index, im, None))
             except Exception as exc:
                 self.big_events.put((token, index, None, str(exc)))
@@ -421,7 +427,7 @@ class ReviewWorkspace(PhotoMatrix):
         # La revisión visual de la matriz es voluntaria. Ninguna aprobación
         # individual es necesaria para crear el PDF.
         if self.paths and self._pending():
-            self.on_export()
+            self.on_export(self)
 
     def close(self):
         self.big_token += 1

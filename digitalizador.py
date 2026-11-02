@@ -38,6 +38,43 @@ EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".tif", ".tiff
 MAX_SIDE = 6000  # Guardar detalle para archivo a largo plazo (no disminuir fotos normales del iPhone).
 
 
+def normalized_pdf_name(value: str) -> str:
+    """Valida un nombre Windows y añade .pdf exactamente una vez."""
+    name = value.strip()
+    if name.lower().endswith(".pdf"):
+        name = name[:-4].strip()
+    if not name or name in {".", ".."}:
+        raise ValueError("Escribe un nombre para el PDF.")
+    if any(char in name for char in '<>:"/\\|?*') or name.endswith(".") or name.endswith(" "):
+        raise ValueError("El nombre contiene caracteres que Windows no permite.")
+    reserved = {"CON", "PRN", "AUX", "NUL"}
+    reserved.update(f"COM{i}" for i in range(1, 10))
+    reserved.update(f"LPT{i}" for i in range(1, 10))
+    if name.upper().split(".")[0] in reserved:
+        raise ValueError("Elige otro nombre, Windows reserva ese nombre.")
+    return name + ".pdf"
+
+
+def normalize_pdf_destination(selected: str) -> Path:
+    """Conserva carpeta y nombre elegidos en Guardar como, exige extensión PDF."""
+    path = Path(selected)
+    if path.suffix and path.suffix.lower() != ".pdf":
+        raise ValueError("El archivo debe tener la extensión .pdf.")
+    return path.with_name(normalized_pdf_name(path.name))
+
+
+def verify_pdf_export(path: Path, expected_pages: int) -> None:
+    """Revisa el PDF temporal antes de publicarlo como archivo definitivo."""
+    import fitz
+    with fitz.open(path) as document:
+        if document.is_encrypted or document.page_count != expected_pages:
+            raise RuntimeError("El PDF exportado está incompleto o no se puede abrir.")
+        for page_number in range(document.page_count):
+            if not document.load_page(page_number).get_images(full=True):
+                raise RuntimeError(f"La página {page_number + 1} del PDF no contiene la imagen.")
+
+
+
 def capture_datetime(photo: Path) -> datetime:
     """Obtiene la fecha ORIGINAL de toma (EXIF DateTimeOriginal), no la del archivo.
 
@@ -199,7 +236,7 @@ def prepare_page(
     pil = open_color_image(photo)
     image = np.asarray(pil)
     cropped = False
-    if auto_crop:
+    if auto_crop or manual_corners is not None:
         corners = manual_corners if manual_corners is not None else find_document_corners(image)
         if corners is not None:
             corners = ordenar_esquinas(corners)
@@ -281,6 +318,8 @@ def create_pdf(
             if written == 0:
                 raise RuntimeError("No se pudo procesar ninguna imagen. " + "; ".join(errors[:3]))
             pdf.save()
+            # Si faltan páginas o imágenes, no se deja un PDF aparentemente terminado.
+            verify_pdf_export(temp_pdf, written)
             os.replace(temp_pdf, target)
         finally:
             if temp_pdf.exists():
@@ -337,6 +376,7 @@ def gui_main():
             self.page_position = tk.StringVar(value='Página 0 de 0')
             self.crop_loading = False
             self.latest_pdf: Path | None = None
+            self.export_review = None
 
             style = ttk.Style(root)
             if "clam" in style.theme_names():
@@ -508,12 +548,13 @@ def gui_main():
 
             ReviewWorkspace(self.root, self.paths, processed, self._matrix_save,
                             preview_image, manual, self._replace_review_photo,
-                            self._insert_review_photo, self.make_pdf, auto_crop=auto)
+                            self._insert_review_photo, self.make_pdf, auto_crop=auto,
+                            pdf_name=self.pdf_name)
 
         def _matrix_save(self, index, corners):
             photo = self.paths[index]
             self.manual_corners[photo] = corners.copy()
-            self.auto_crop.set(True)
+            # Guardar una hoja no debe cambiar el recorte de las demás páginas.
             self.preview_cache.clear()
             if self.listbox.curselection() != (index,):
                 self.listbox.selection_clear(0, "end")
@@ -763,33 +804,42 @@ def gui_main():
 
         @staticmethod
         def clean_name(value: str) -> str:
-            name = value.strip()
-            if name.lower().endswith(".pdf"):
-                name = name[:-4].strip()
-            if not name or name in {".", ".."}:
-                raise ValueError("Escribe un nombre para el PDF.")
-            if any(char in name for char in '<>:"/\\|?*') or name.endswith("."):
-                raise ValueError("El nombre contiene caracteres que Windows no permite.")
-            if name.upper().split(".")[0] in {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}:
-                raise ValueError("Elige otro nombre, Windows reserva ese nombre.")
-            return name + ".pdf"
+            return normalized_pdf_name(value)
 
-        def make_pdf(self):
+        def make_pdf(self, review=None):
             if not self.folder or not self.paths or self.busy:
                 return
+            dialog_parent = (review.window if review is not None and not review.closed
+                             else self.root)
             try:
                 target_name = self.clean_name(self.pdf_name.get())
             except ValueError as exc:
-                messagebox.showwarning("Nombre del PDF", str(exc))
-                self.name_entry.focus_set()
+                messagebox.showwarning("Nombre del PDF", str(exc), parent=dialog_parent)
                 return
+            # El diálogo debe pertenecer al revisor si se exporta desde su matriz.
             dest = filedialog.asksaveasfilename(
-                title="Guardar documento PDF", initialfile=target_name,
+                parent=dialog_parent, title="Guardar documento PDF", initialfile=target_name,
                 defaultextension=".pdf", filetypes=[("Documento PDF", "*.pdf")],
                 initialdir=str(self.folder.parent),
             )
             if not dest:
                 return
+            try:
+                target = normalize_pdf_destination(dest)
+            except ValueError as exc:
+                messagebox.showwarning("Nombre del PDF", str(exc), parent=dialog_parent)
+                return
+            if target.exists():
+                messagebox.showwarning("PDF existente",
+                    "Ya existe un archivo con ese nombre. Elige otro para conservar el original.",
+                    parent=dialog_parent)
+                return
+            # Refleja el nombre realmente elegido, tanto en la matriz como en inicio.
+            self.pdf_name.set(target.stem)
+            self.export_review = review
+            if review is not None and not review.closed:
+                review.status.set("Exportando PDF...")
+                review.export_button.state(["disabled"])
             self.busy = True
             self.folder_button.state(["disabled"])
             self.make_button.state(["disabled"])
@@ -804,7 +854,7 @@ def gui_main():
 
             def worker():
                 try:
-                    output = create_pdf(paths, Path(dest), should_crop,
+                    output = create_pdf(paths, target, should_crop,
                         progress=lambda number, total, name: self.events.put(("progress", number, total, name)),
                         manual_corners=manual, preserve_input_order=True)
                     self.events.put(("done", output))
@@ -849,21 +899,38 @@ def gui_main():
                     _, n, total, name = event
                     self.progress.configure(value=n)
                     self.progress_text.set(f"Procesando {n} de {total}: {name}")
+                    review = self.export_review
+                    if review is not None and not review.closed:
+                        review.status.set(f"Exportando {n}/{total}...")
                 elif event[0] == "done":
                     info = event[1]
                     self.latest_pdf = Path(info['file'])
                     self.reset_controls()
+                    review = self.export_review
+                    dialog_parent = (review.window if review is not None and not review.closed
+                                     else self.root)
+                    if review is not None and not review.closed:
+                        review.export_button.state(["!disabled"])
+                        review.status.set(f"PDF guardado: {self.latest_pdf.name}")
+                    self.export_review = None
                     details = f"PDF creado con {info['pages']} páginas.\n\n{info['file']}"
                     if info["uncropped"]:
                         details += f"\n\n{len(info['uncropped'])} fotos no se pudieron recortar con seguridad y se incluyeron completas.\n" + "\n".join(info["uncropped"][:8])
                     if info["errors"]:
                         details += f"\n\n{len(info['errors'])} fotos no se pudieron incluir:\n" + "\n".join(info["errors"][:8])
                     self.progress_text.set(f"Listo: {info['pages']} páginas guardadas.")
-                    messagebox.showinfo("PDF terminado", details)
+                    messagebox.showinfo("PDF terminado", details, parent=dialog_parent)
                 elif event[0] == "failed":
                     self.reset_controls()
                     self.progress_text.set("No se pudo crear el PDF.")
-                    messagebox.showerror("Error al generar PDF", event[1])
+                    review = self.export_review
+                    dialog_parent = (review.window if review is not None and not review.closed
+                                     else self.root)
+                    if review is not None and not review.closed:
+                        review.export_button.state(["!disabled"])
+                        review.status.set("Error al exportar PDF.")
+                    self.export_review = None
+                    messagebox.showerror("Error al generar PDF", event[1], parent=dialog_parent)
             self.root.after(100, self.poll_events)
 
         def reset_controls(self):

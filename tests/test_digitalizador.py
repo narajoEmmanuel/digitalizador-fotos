@@ -10,7 +10,8 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from digitalizador import capture_datetime, create_pdf, discover_images, prepare_page
+from digitalizador import (capture_datetime, create_pdf, discover_images, prepare_page,
+                          normalize_pdf_destination, normalized_pdf_name, verify_pdf_export)
 from recorte import detectar_hoja
 
 
@@ -124,6 +125,61 @@ class DigitalizadorTests(unittest.TestCase):
             self.assertGreater(int(center[0]), int(center[2]) + 70)
             result.close()
             self.assertEqual(path.read_bytes(), before)
+
+    def test_nombre_de_pdf_elegido_se_conserva(self):
+        import fitz
+        self.assertEqual(normalized_pdf_name("  Archivo de Alemán  "), "Archivo de Alemán.pdf")
+        self.assertEqual(normalized_pdf_name("Archivo de Alemán.PDF"), "Archivo de Alemán.pdf")
+        with self.assertRaisesRegex(ValueError, "extensión"):
+            normalize_pdf_destination(r"C:\\Documentos\\archivo.txt")
+        with tempfile.TemporaryDirectory() as d:
+            selected = normalize_pdf_destination(str(Path(d) / "Mis apuntes especiales.PDF"))
+            self.assertEqual(selected.name, "Mis apuntes especiales.pdf")
+            source = Path(d) / "pagina.jpg"
+            self.photo_with_capture(source, "2026:11:01 11:00:00")
+            result = create_pdf([source], selected, auto_crop=False, preserve_input_order=True)
+            self.assertEqual(result["file"], str(selected))
+            self.assertTrue(selected.exists())
+            verify_pdf_export(selected, 1)
+            with fitz.open(selected) as pdf:
+                self.assertEqual(pdf.metadata["title"], selected.stem)
+
+    def test_pdf_no_permite_sobrescribir_el_original(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d) / "pagina.jpg"
+            self.photo_with_capture(source, "2026:11:01 11:00:00")
+            pdf = Path(d) / "mis apuntes.pdf"
+            create_pdf([source], pdf, auto_crop=False, preserve_input_order=True)
+            before = pdf.read_bytes()
+            with self.assertRaises(FileExistsError):
+                create_pdf([source], pdf, auto_crop=False, preserve_input_order=True)
+            self.assertEqual(before, pdf.read_bytes())
+
+    def test_recorte_manual_con_automatico_desactivado_se_exporta(self):
+        import fitz
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d) / "pagina.jpg"
+            arr = np.zeros((640, 480, 3), dtype=np.uint8)
+            arr[:] = [190, 10, 10]
+            arr[70:560, 60:420] = [240, 240, 230]
+            Image.fromarray(arr).save(source, quality=98)
+            corners = np.float32([[60, 70], [419, 70], [419, 559], [60, 559]])
+            preview, cropped = prepare_page(source, auto_crop=False, manual_corners=corners)
+            self.assertTrue(cropped)
+            self.assertLess(preview.width, 400)
+            self.assertLess(preview.height, 530)
+            preview.close()
+            out = Path(d) / "Hoja recortada.pdf"
+            create_pdf([source], out, auto_crop=False,
+                       manual_corners={source: corners}, preserve_input_order=True)
+            with fitz.open(out) as pdf:
+                self.assertEqual(pdf.page_count, 1)
+                pix = pdf[0].get_pixmap()
+                center = (pix.height//2 * pix.width + pix.width//2)*3
+                color = pix.samples[center:center+3]
+                self.assertGreater(color[0], 210)
+                self.assertGreater(color[1], 210)
+                self.assertGreater(color[2], 200)
 
     def test_pdf_personalizado_sin_cambiar_original(self):
         with tempfile.TemporaryDirectory() as d:
