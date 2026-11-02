@@ -349,6 +349,51 @@ def _cached_auto_corners(photo: Path, modified_ns: int, size_bytes: int):
 
 _detection_lock = threading.Lock()
 _detection_inflight: dict[tuple[Path, int, int], Future] = {}
+# Los refinamientos manuales del lote se conservan por archivo y versión.
+# No se escriben sobre la imagen original ni sobre los recortes manuales.
+_optimized_auto_corners: OrderedDict = OrderedDict()
+
+
+def clear_automatic_optimizations():
+    with _detection_lock:
+        _optimized_auto_corners.clear()
+
+
+def optimize_photo_corners(photo: Path, max_passes: int = 2) -> tuple[bool, str | None]:
+    """Optimizar una foto tomando como inicio sus esquinas automáticas actuales.
+
+    A diferencia de recalcular el mismo lote desde cero, esta acción refina
+    el resultado YA detectado. Matriz y exportador lo leen inmediatamente.
+    """
+    photo = Path(photo)
+    stat = photo.stat()
+    key = (photo, stat.st_mtime_ns, stat.st_size)
+    old, problem = automatic_page_corners(photo)
+    preview, (full_w, full_h) = preview_image(photo, AUTOMATIC_DETECTION_SIDE)
+    try:
+        image = np.asarray(preview)
+        h, w = image.shape[:2]
+        if old is None:
+            found = find_document_corners(image)
+            if found is None or not safe_auto_geometry(found, w, h):
+                return False, problem or "No se detectó una hoja segura"
+            base = ordenar_esquinas(found).astype(np.float32)
+        else:
+            base = ordenar_esquinas(
+                old * np.float32([w/full_w, h/full_h])).astype(np.float32)
+        refined = refine_automatic_corners(image, base, max_passes=max_passes)
+        changed = old is None or float(np.max(np.linalg.norm(refined-base, axis=1))) >= 1.5
+        if not changed or not safe_auto_geometry(refined, w, h):
+            return False, problem
+        result = (refined * np.float32([full_w/w, full_h/h])).astype(np.float32)
+        with _detection_lock:
+            _optimized_auto_corners[key] = result
+            _optimized_auto_corners.move_to_end(key)
+            while len(_optimized_auto_corners) > 4096:
+                _optimized_auto_corners.popitem(last=False)
+        return True, None
+    finally:
+        preview.close()
 
 
 def automatic_page_corners(photo: Path) -> tuple[np.ndarray | None, str | None]:
@@ -357,6 +402,10 @@ def automatic_page_corners(photo: Path) -> tuple[np.ndarray | None, str | None]:
     stat = photo.stat()
     key = (photo, stat.st_mtime_ns, stat.st_size)
     with _detection_lock:
+        override = _optimized_auto_corners.get(key)
+        if override is not None:
+            _optimized_auto_corners.move_to_end(key)
+            return override.copy(), None
         future = _detection_inflight.get(key)
         leader = future is None
         if leader:
@@ -371,6 +420,10 @@ def automatic_page_corners(photo: Path) -> tuple[np.ndarray | None, str | None]:
             with _detection_lock:
                 _detection_inflight.pop(key, None)
     corners, reason = future.result()
+    with _detection_lock:
+        override = _optimized_auto_corners.get(key)
+        if override is not None:
+            return override.copy(), None
     return (corners.copy() if corners is not None else None), reason
 
 
