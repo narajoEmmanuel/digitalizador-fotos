@@ -13,7 +13,8 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 ### Rendimiento
 
 - El lote de fotografías se importa y ordena por EXIF sin congelar la ventana.
-- Se detectan automáticamente las esquinas de **todas las fotografías**, no solo de las 16 visibles. El detector usa la misma resolución de trabajo (1600 px) que el ajuste manual y realiza **hasta dos refinamientos**, deteniéndose cuando no hay una mejora fiable. Se ejecuta en segundo plano con progreso `Preparando esquinas: X/Y`; el resultado se comparte con la matriz, la vista final y el PDF. La preparación inicial puede consumir más tiempo, pero evita diferencias de búsqueda por escala.
+- La casilla **Recorte automático** activa o desactiva el recorte para todas las hojas, incluso con la matriz abierta. Al reactivarla se vuelve a detectar y optimizar el lote completo, con un contador visible. Los recortes manuales no se eliminan. Al desactivar se exportan fotografías completas excepto las páginas que hayas recortado manualmente.
+- El detector trabaja a 1600 píxeles y realiza hasta dos refinamientos, con las mismas esquinas para la matriz, la vista final y el PDF.
 - La matriz y la vista de lectura comparten una caché limitada de 24 imágenes. Dos trabajadores preparan las miniaturas en paralelo, sin bloquear la imagen seleccionada.
 - **Solo al ampliar** una hoja se carga el resultado final a alta resolución, con la misma compresión JPEG utilizada en el PDF.
 - Los giros y recortes manuales actualizan únicamente la página modificada.
@@ -93,4 +94,4 @@ Uso opcional por consola:
 - `vistas.py`: utilidades de visualización.
 - `tests/`: pruebas automatizadas.
 
-**Versión actual: 1.17.**
+**Versión actual: 1.17.1.**
