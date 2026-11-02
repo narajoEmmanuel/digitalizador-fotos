@@ -63,7 +63,7 @@ def _quad_from_contour(contour: np.ndarray) -> list[tuple[np.ndarray, bool]]:
         box = cv2.boxPoints(rect)
         area = cv2.contourArea(part)
         box_area = max(1.0, cv2.contourArea(box))
-        if area / box_area >= .87:
+        if area / box_area >= .96:
             result.append((box, True))
     return result
 
@@ -104,11 +104,146 @@ def _contraste_exterior(quad: np.ndarray, lab: np.ndarray) -> tuple[float, int]:
     return float(np.median(strengths)), sides_with_background
 
 
+
+
+# Color mediano del papel proporcionado por el usuario (muestra 32 × 15 px).
+# LAB tolera variaciones de luz y se compara también con el fondo fotografiado.
+PAPER_RGB = (209, 201, 183)
+
+
+def _rectangulo_proyectado(quad: np.ndarray, width: int, height: int) -> bool:
+    """Una hoja en perspectiva tiene 4 aristas rectas, sin puntas ni ángulos agudos.
+
+    No se exigen 90° exactos en la foto porque una hoja inclinada presenta
+    perspectiva. Se restringen las deformaciones incompatibles con una hoja.
+    """
+    quad = ordenar_esquinas(quad)
+    if not np.isfinite(quad).all():
+        return False
+    if ((quad[:, 0] < 2).any() or (quad[:, 0] >= width - 2).any()
+            or (quad[:, 1] < 2).any() or (quad[:, 1] >= height - 2).any()):
+        return False
+    if not cv2.isContourConvex(quad.reshape(-1, 1, 2)):
+        return False
+    area = abs(cv2.contourArea(quad))
+    if not .17 < area/(width*height) < .96:
+        return False
+    vectors = np.roll(quad, -1, axis=0) - quad
+    lengths = np.linalg.norm(vectors, axis=1)
+    if lengths.min() < .18 * min(width, height):
+        return False
+    if lengths[0]/lengths[2] > 1.8 or lengths[2]/lengths[0] > 1.8:
+        return False
+    if lengths[1]/lengths[3] > 1.8 or lengths[3]/lengths[1] > 1.8:
+        return False
+    for i in range(4):
+        left = quad[(i-1) % 4] - quad[i]
+        right = quad[(i+1) % 4] - quad[i]
+        cosine = float(np.dot(left, right) /
+                       max(1.0, np.linalg.norm(left)*np.linalg.norm(right)))
+        if abs(cosine) > .68:  # Aproximadamente 47° a 133°.
+            return False
+    return True
+
+
+def _color_papel(rgb: np.ndarray) -> np.ndarray | None:
+    """Segmentación guiada por el color del papel y por el fondo de cada foto.
+
+    Devuelve un cuadrilátero solo con separación cromática suficiente,
+    contorno lleno y contraste físico en al menos tres lados.
+    """
+    h, w = rgb.shape[:2]
+    scale = min(1.0, 1100 / max(h, w))
+    small = cv2.resize(rgb, (round(w*scale), round(h*scale)),
+                       interpolation=cv2.INTER_AREA) if scale < 1 else rgb
+    sh, sw = small.shape[:2]
+    lab = cv2.cvtColor(small, cv2.COLOR_RGB2LAB).astype(np.float32)
+    paper_lab = cv2.cvtColor(
+        np.uint8([[PAPER_RGB]]), cv2.COLOR_RGB2LAB).astype(np.float32)[0, 0]
+    edge_h, edge_w = max(8, int(sh*.045)), max(8, int(sw*.045))
+    background = np.stack([
+        np.median(lab[:edge_h, :edge_w].reshape(-1, 3), axis=0),
+        np.median(lab[:edge_h, -edge_w:].reshape(-1, 3), axis=0),
+        np.median(lab[-edge_h:, :edge_w].reshape(-1, 3), axis=0),
+        np.median(lab[-edge_h:, -edge_w:].reshape(-1, 3), axis=0),
+    ])
+    diff = lab - paper_lab
+    # Reducir el peso de luminosidad permite papel más claro bajo otra luz.
+    paper_distance = np.sqrt(.25*diff[..., 0]**2
+                             + 1.5*diff[..., 1]**2 + 1.5*diff[..., 2]**2)
+    background_distance = np.min(np.sqrt(
+        .25*(lab[..., None, 0] - background[:, 0])**2
+        + 1.5*(lab[..., None, 1] - background[:, 1])**2
+        + 1.5*(lab[..., None, 2] - background[:, 2])**2), axis=2)
+    mask = np.uint8((paper_distance < 38) &
+                    (paper_distance < .77*background_distance)) * 255
+    size = max(5, int(min(sh, sw)*.018)//2*2+1)
+    closing = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, closing, iterations=2)
+    mask = cv2.morphologyEx(
+        mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    best = None
+    center_margin = max(4., min(sh, sw)*.014)
+    for contour in sorted(contours, key=cv2.contourArea, reverse=True)[:8]:
+        area = cv2.contourArea(contour)
+        if area < .15*sh*sw:
+            continue
+        hull = cv2.convexHull(contour)
+        hull_area = cv2.contourArea(hull)
+        if area / max(hull_area, 1) < .78:
+            # Contorno en forma de estrella o con picos grandes.
+            continue
+        perimeter = cv2.arcLength(hull, True)
+        for eps in (.009, .015, .022, .032, .045):
+            polygon = cv2.approxPolyDP(hull, eps*perimeter, True)
+            if len(polygon) != 4:
+                continue
+            quad = ordenar_esquinas(polygon.reshape(4, 2))
+            if not _rectangulo_proyectado(quad, sw, sh):
+                continue
+            coverage = area/max(1., cv2.contourArea(quad))
+            if not .70 <= coverage <= 1.20:
+                continue
+            center = quad.mean(axis=0)
+            contrasts = []
+            for p, q in zip(quad, np.roll(quad, -1, axis=0)):
+                t = np.linspace(.12, .88, 22, dtype=np.float32)[:, None]
+                edge = p[None, :]*(1-t) + q[None, :]*t
+                inward = center-edge.mean(axis=0)
+                inward /= max(1., float(np.linalg.norm(inward)))
+                inside = np.rint(edge + inward*center_margin).astype(int)
+                outside = np.rint(edge - inward*center_margin).astype(int)
+                valid = (np.all(inside >= 0, axis=1) &
+                         np.all(outside >= 0, axis=1) &
+                         (inside[:, 0] < sw) & (inside[:, 1] < sh) &
+                         (outside[:, 0] < sw) & (outside[:, 1] < sh))
+                if np.count_nonzero(valid) < 16:
+                    contrasts.append(0.)
+                    continue
+                a, b = inside[valid], outside[valid]
+                contrast = np.median(np.linalg.norm(
+                    lab[a[:, 1], a[:, 0]] -
+                    lab[b[:, 1], b[:, 0]], axis=1))
+                contrasts.append(float(contrast))
+            if sum(value > 10. for value in contrasts) < 3:
+                continue
+            score = (float(np.median(contrasts)) +
+                     float(min(contrasts))*.3 + coverage*6)
+            if best is None or score > best[0]:
+                best = score, quad/scale
+    return best[1].astype(np.float32) if best is not None else None
+
 def detectar_hoja(rgb: np.ndarray) -> np.ndarray | None:
     """Localiza cuatro esquinas sin necesidad de papel blanco o fondo negro."""
     h, w = rgb.shape[:2]
     if min(h, w) < 150:
         return None
+    # El papel beige con fondo de color se intenta primero. Si no hay
+    # separación suficiente, se mantiene el detector general anterior.
+    reference_quad = _color_papel(rgb)
+    if reference_quad is not None:
+        return reference_quad
     scale = min(1.0, 1300 / max(w, h))
     small = cv2.resize(rgb, (round(w*scale), round(h*scale)), interpolation=cv2.INTER_AREA) if scale < 1 else rgb
     sh, sw = small.shape[:2]
@@ -168,7 +303,7 @@ def detectar_hoja(rgb: np.ndarray) -> np.ndarray | None:
             for raw, is_box_fallback in _quad_from_contour(contour):
                 quad = ordenar_esquinas(raw)
                 valid, fraction = _validar(quad, sw, sh)
-                if not valid:
+                if not valid or not _rectangulo_proyectado(quad, sw, sh):
                     continue
                 # Evidencia de un borde físico en cada lado, evita elegir un
                 # bloque rectangular de contenido sin contraste exterior.
