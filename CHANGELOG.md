@@ -1,5 +1,16 @@
 # Historial de cambios
 
+## 1.19.1 (2026-11-02)
+
+- Corregido el progreso invisible de exportación: la barra principal ahora se ubica sobre las fotografías, donde no puede ser ocultada por el panel expandible.
+- Nueva ventana de progreso de PDF visible en primer plano, independientemente de si se inicia desde la matriz o desde la ventana principal.
+- Muestra total de páginas, páginas completadas, porcentaje y estimación del tiempo restante, actualizados durante la exportación.
+- Los estados **Guardando PDF** y **Verificando PDF** muestran una animación de actividad hasta que el archivo haya sido comprobado.
+- La ventana de progreso se cierra después del resultado final, y permanece vinculada a la ventana principal aunque se cierre la matriz.
+- No cambia el procesamiento de imágenes, la calidad JPEG ni los recortes; solo mejora la visibilidad del estado.
+- Pruebas de posición visible del indicador y de actualización de sus etapas.
+
+
 ## 1.19 (2026-11-02)
 
 - Nuevo botón **Aprender de mis ajustes** en pantalla principal, de uso explícito antes de exportar.
