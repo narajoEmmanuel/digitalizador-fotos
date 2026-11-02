@@ -4,7 +4,7 @@ from io import BytesIO
 import queue
 import numpy as np
 from PIL import Image, ImageTk
-from recorte import detectar_hoja, ordenar_esquinas
+from recorte import detectar_hoja, ordenar_esquinas, refinar_esquinas
 from revisor_base import PhotoMatrix, validated_photo_corners
 
 
@@ -45,6 +45,7 @@ class ReviewWorkspace(PhotoMatrix):
         self.mode = "preview"
         self.corners_enabled = False  # Preferencia para todas las hojas del revisor.
         self.dirty = False
+        self.detect_steps = {}
         self.big_image = None
         self.big_photo = None
         self.full_preview = False
@@ -193,6 +194,10 @@ class ReviewWorkspace(PhotoMatrix):
             self.board.configure(cursor="fleur")
         else:
             self.edit_button.configure(text="Desactivar esquinas")
+            self.reset_button.configure(
+                text=("Optimizar" if self.selected is not None
+                      and self.detect_steps.get(self.paths[self.selected], 0)
+                      else "Detectar"))
             self.reset_button.pack(side="right")
             self.save_button.pack(side="right", padx=5)
             self.board.configure(cursor="crosshair")
@@ -244,24 +249,68 @@ class ReviewWorkspace(PhotoMatrix):
                 self._edited()
 
     def reset(self):
-        """Recalcular el contorno, indicando si la detección es imposible o igual."""
-        if self.mode != "edit" or self.editor_image is None or self.full_size is None:
+        """Primera pulsación: detectar. Siguientes: optimizar el borde existente.
+
+        El cálculo de OpenCV se realiza fuera del hilo de Tk.
+        """
+        if (self.mode != "edit" or self.editor_image is None
+                or self.full_size is None or self.selected is None
+                or self.editor_loaded_index != self.selected):
             return
-        detected = detectar_hoja(np.asarray(self.editor_image))
-        if detected is None:
-            self.status.set("No se detectaron esquinas. Ajusta el recorte manualmente.")
+        path = self.paths[self.selected]
+        stage = self.detect_steps.get(path, 0)
+        original = np.asarray(self.editor_image).copy()
+        scale = np.float32([original.shape[1] / self.full_size[0],
+                            original.shape[0] / self.full_size[1]])
+        current = self.points.copy() * scale
+        token, index = self.big_token, self.selected
+        self.reset_button.state(["disabled"])
+        self.status.set("Buscando mejores bordes..." if stage else "Detectando...")
+        def detect():
+            try:
+                if stage:
+                    found = refinar_esquinas(original, current)
+                else:
+                    found = detectar_hoja(original)
+                self.big_events.put(("detect", token, index, (stage, found), None))
+            except Exception as exc:
+                self.big_events.put(("detect", token, index, (stage, None), str(exc)))
+        self.quick_pool.submit(detect)
+
+    def _finish_detection(self, stage, found, error):
+        """Aplicar solamente un recorte válido de la página actual."""
+        self.reset_button.state(["!disabled"])
+        path = self.paths[self.selected]
+        if not stage:
+            # La segunda pulsación intenta optimizar, no repetir la detección.
+            self.detect_steps[path] = 1
+        self._set_mode_controls()
+        if error:
+            self.status.set(f"No se pudo optimizar: {error}")
+            return
+        if found is None:
+            self.status.set(
+                "Sin mejora fiable. Se mantienen las esquinas."
+                if stage else "No se detectaron esquinas. Puedes optimizar o ajustarlas.")
             return
         scale = np.float32([self.full_size[0] / self.editor_image.width,
                             self.full_size[1] / self.editor_image.height])
-        points = ordenar_esquinas(detected) * scale
-        if self.points is not None and np.allclose(self.points, points, atol=2):
-            self.status.set("El recorte automático no cambió.")
+        points = ordenar_esquinas(found) * scale
+        try:
+            validated_photo_corners(points, self.full_size)
+        except ValueError:
+            self.status.set("Se descartó una geometría insegura.")
             return
-        self.detected_points = points.copy()
+        if self.points is not None and np.allclose(self.points, points, atol=2):
+            self.status.set("Sin cambios útiles. Se conservan las esquinas.")
+            return
         self.points = points.copy()
+        self.detected_points = points.copy()
         self._draw_editor()
         self._edited()
-        self.status.set("Recorte actualizado. Comprueba las esquinas.")
+        self.status.set(
+            "Bordes refinados. Guarda el recorte si quedó bien."
+            if stage else "Esquinas detectadas. Pulsa Optimizar para afinarlas.")
 
     def save(self):
         from tkinter import messagebox
@@ -301,6 +350,7 @@ class ReviewWorkspace(PhotoMatrix):
             self.big_image = None
         if self.mode == "edit":
             super().choose(index)
+            self._set_mode_controls()
         else:
             # No cargar la foto a 1600 px ni detectarla de nuevo al hacer clic.
             # Basta la vista de 1050 px que alimenta la matriz.
@@ -410,6 +460,13 @@ class ReviewWorkspace(PhotoMatrix):
                 kind, token, index, im, error = self.big_events.get_nowait()
             except queue.Empty:
                 break
+            if kind == "detect":
+                if (token == self.big_token and index == self.selected
+                        and self.mode == "edit"
+                        and self.editor_loaded_index == self.selected):
+                    stage, corners = im
+                    self._finish_detection(stage, corners, error)
+                continue
             if token != self.big_token or index != self.selected or self.mode != "preview":
                 if im is not None:
                     im.close()
