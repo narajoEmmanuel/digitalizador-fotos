@@ -144,6 +144,7 @@ class PdfEditorWindow:
         self.original_count = len(self.pages)
         self.history: list[tuple[list[PageItem], int]] = []
         self.saved_pages = list(self.pages)
+        self.preview_pdf_path = self.path
         self.window = tk.Toplevel(parent)
         self.window.title(f"Editar PDF: {pdf_path.name}")
         self.window.geometry('1090x770')
@@ -215,7 +216,8 @@ class PdfEditorWindow:
         jump.pack(side='left')
         jump.bind('<Return>', self.go_to_page)
         ttk.Button(navigation, text='Ir', command=self.go_to_page).pack(side='left', padx=(5, 0))
-        ttk.Button(navigation, text='Ver 16 páginas', command=self.open_overview).pack(side='right')
+        ttk.Button(navigation, text='Ver PDF en matriz (16)', command=self.open_overview).pack(side='right')
+        ttk.Button(navigation, text='PDF ampliado', command=self.open_zoom).pack(side='right', padx=8)
 
         frame = tk.Frame(right, bg='#e3e6ea')
         frame.pack(fill='both', expand=True, padx=(12, 0))
@@ -316,6 +318,20 @@ class PdfEditorWindow:
         for index in (current + 1, current - 1):
             if 0 <= index < len(self.pages):
                 self._submit_preview(self.pages[index], -1)
+
+    def open_zoom(self):
+        from tkinter import messagebox
+        from vistas import PdfZoomViewer
+        if self.pages != self.saved_pages:
+            messagebox.showinfo('Vista final del PDF',
+                'La vista ampliada muestra el PDF guardado, sin las ediciones pendientes. '
+                'Para revisar esas ediciones, guarda primero un PDF revisado.', parent=self.window)
+        current = self.pages[self.current()]
+        index = self.current() if self.preview_pdf_path != self.path else (current.source_index if current.source_index is not None else 0)
+        try:
+            PdfZoomViewer(self.window, self.preview_pdf_path, index)
+        except Exception as exc:
+            messagebox.showerror('Vista final', str(exc), parent=self.window)
 
     def open_overview(self):
         """Vista de contacto de 16 páginas para revisar el PDF sin abrir una a una."""
@@ -563,6 +579,7 @@ class PdfEditorWindow:
             elif event[0] == 'done':
                 self.busy = False
                 self.saved_pages = list(self.pages)
+                self.preview_pdf_path = Path(event[1]['file'])
                 self.state.set(f'Guardado: {event[1]["pages"]} páginas.')
                 self._unlock()
                 messagebox.showinfo('PDF revisado',
