@@ -53,6 +53,8 @@ class PhotoMatrix:
         self.points = self.detected_points = self.full_size = None
         self.drag_index = self.image_bounds = None
         self.resize_after = None
+        self.thumb_size = (max(85,min(180,self.window.winfo_screenwidth()//10)),
+                           max(78,min(155,self.window.winfo_screenheight()//6)))
         body = ttk.Frame(self.window, padding=12)
         body.pack(fill='both', expand=True)
         top = ttk.Frame(body)
@@ -136,9 +138,7 @@ class PhotoMatrix:
     def _thumb(self, gen, index, path, version):
         try:
             im = self.preview_provider(path)
-            maxw = max(85,min(180,self.window.winfo_screenwidth()//10))
-            maxh = max(78,min(155,self.window.winfo_screenheight()//6))
-            im.thumbnail((maxw,maxh),Image.Resampling.BILINEAR)
+            im.thumbnail(self.thumb_size,Image.Resampling.BILINEAR)
             self.events.put(('thumb',gen,index,version,im,None))
         except Exception as e:
             self.events.put(('thumb',gen,index,version,None,str(e)))
