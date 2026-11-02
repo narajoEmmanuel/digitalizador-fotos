@@ -162,21 +162,75 @@ class ReviewFlowTests(unittest.TestCase):
         panel.on_save.assert_called_once()
         self.assertIn(0, panel.saved_indices)
 
-    def test_deteccion_insegura_no_mueve_las_esquinas(self):
+    def _fake_corner_panel(self):
+        import queue
         from unittest import mock
         from revisor import ReviewWorkspace
         panel = ReviewWorkspace.__new__(ReviewWorkspace)
         panel.mode = "edit"
-        panel.editor_image = Image.new("RGB", (100, 130), "gray")
-        panel.full_size = (100, 130)
-        panel.points = np.float32([[10, 10], [90, 10], [90, 120], [10, 120]])
-        original = panel.points.copy()
+        panel.closed = False
+        panel.paths = [Path("hoja.jpg")]
+        panel.selected = 0
+        panel.editor_loaded_index = 0
+        panel.big_token = 5
+        panel.big_events = queue.Queue()
+        panel.detect_steps = {}
+        panel.editor_image = Image.new("RGB", (700, 900), "gray")
+        panel.full_size = (700, 900)
+        panel.points = np.float32([[100, 85], [585, 120],
+                                    [612, 765], [80, 780]])
+        panel.reset_button = mock.Mock()
         panel.status = mock.Mock()
         panel._edited = mock.Mock()
+        panel._draw_editor = mock.Mock()
+        panel._set_mode_controls = mock.Mock()
+        panel.quick_pool = mock.Mock()
+        panel.quick_pool.submit.side_effect = lambda worker: worker()
+        panel.window = mock.Mock()
+        return panel
+
+    def test_deteccion_insegura_no_mueve_las_esquinas(self):
+        from unittest import mock
+        panel = self._fake_corner_panel()
+        original = panel.points.copy()
         with mock.patch("revisor.detectar_hoja", return_value=None):
             panel.reset()
+            panel.poll_large()
         np.testing.assert_array_equal(panel.points, original)
         self.assertIn("No se detectaron", panel.status.set.call_args.args[0])
+        panel._edited.assert_not_called()
+        panel.editor_image.close()
+
+    def test_segunda_pulsacion_optimiza_no_repite_deteccion(self):
+        from unittest import mock
+        panel = self._fake_corner_panel()
+        first = panel.points.copy()
+        improved = first + np.float32([[8, 6], [-5, -4], [-4, 5], [8, -5]])
+        with (mock.patch("revisor.detectar_hoja", return_value=first) as detector,
+              mock.patch("revisor.refinar_esquinas", return_value=improved) as optimizer):
+            panel.reset()
+            panel.poll_large()
+            self.assertEqual(panel.detect_steps[panel.paths[0]], 1)
+            detector.assert_called_once()
+            optimizer.assert_not_called()
+            panel.reset()
+            panel.poll_large()
+            detector.assert_called_once()
+            optimizer.assert_called_once()
+            np.testing.assert_allclose(panel.points, improved)
+            self.assertTrue(panel._edited.called)
+        panel.editor_image.close()
+
+    def test_refinamiento_inseguro_no_reemplaza_esquinas(self):
+        from unittest import mock
+        panel = self._fake_corner_panel()
+        panel.detect_steps[panel.paths[0]] = 1
+        original = panel.points.copy()
+        with mock.patch("revisor.refinar_esquinas", return_value=None):
+            panel.reset()
+            panel.poll_large()
+        np.testing.assert_array_equal(panel.points, original)
+        self.assertIn("Sin mejora fiable", panel.status.set.call_args.args[0])
         panel._edited.assert_not_called()
         panel.editor_image.close()
 
