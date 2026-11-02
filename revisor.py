@@ -60,25 +60,27 @@ class ReviewWorkspace(PhotoMatrix):
         self.board.bind("<MouseWheel>", self._wheel)
         self.board.bind("<Button-4>", lambda _event: self._scroll(-1))
         self.board.bind("<Button-5>", lambda _event: self._scroll(1))
-        right = self.board.master
-        tools = ttk.Frame(right)
-        tools.pack(before=self.board, fill="x", pady=(0, 6))
+        # Controles debajo de las miniaturas, nunca sobre la vista ampliada.
+        tools = self.action_bar
         self.edit_button = ttk.Button(tools, text="Editar recorte", command=self.edit_mode)
         self.preview_button = ttk.Button(tools, text="Ver resultado", command=self.preview_mode)
         self.save_button.configure(text="Guardar recorte")
         self.reset_button.configure(text="Detectar", command=self.reset)
         self.board.bind("<Double-Button-1>", self._double_click)
         self.board.bind("<Configure>", self._resize)
-        changes = ttk.Frame(right)
-        changes.pack(before=self.board, fill="x", pady=(0, 6))
+
+        changes = ttk.Frame(self.controls)
+        changes.pack(fill="x", pady=(5, 0), before=self.status_widget)
         ttk.Button(changes, text="Sustituir", command=self.replace).pack(side="left")
         ttk.Button(changes, text="+ Antes", command=lambda: self.insert(False)).pack(side="left", padx=5)
         ttk.Button(changes, text="+ Después", command=lambda: self.insert(True)).pack(side="left")
-        footer = ttk.Frame(right)
-        footer.pack(before=self.board, fill="x", pady=(0, 6))
-        ttk.Button(footer, text="Exportar PDF", command=self.export).pack(side="right")
+
         self.quality_label = self.tk.StringVar(value="")
-        ttk.Label(right, textvariable=self.quality_label).pack(before=self.board, fill="x", pady=(0, 5))
+        ttk.Label(self.controls, textvariable=self.quality_label).pack(
+            fill="x", pady=(4, 0), before=self.status_widget)
+        footer = ttk.Frame(self.controls)
+        footer.pack(fill="x", pady=(6, 0))
+        ttk.Button(footer, text="Exportar PDF", command=self.export).pack(side="right")
         self._set_mode_controls()
         self.status.set("")
         if self.paths:
