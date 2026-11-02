@@ -55,6 +55,7 @@ class PhotoMatrix:
         self.generation = self.selection_token = 0
         self.start = 0
         self.photos, self.buttons, self.thumb_versions = {}, {}, {}
+        self.crop_warnings = {}
         self.selected = None
         self.saved_indices = set()
         self.closed = False
@@ -161,11 +162,12 @@ class PhotoMatrix:
 
     def _thumb(self, gen, index, path, version):
         try:
-            im = self.preview_provider(path)
-            im.thumbnail(self.thumb_size,Image.Resampling.BILINEAR)
-            self.events.put(('thumb',gen,index,version,im,None))
+            result = self.preview_provider(path)
+            im, warning = result if isinstance(result, tuple) else (result, None)
+            im.thumbnail(self.thumb_size, Image.Resampling.BILINEAR)
+            self.events.put(('thumb',gen,index,version,im,None,warning))
         except Exception as e:
-            self.events.put(('thumb',gen,index,version,None,str(e)))
+            self.events.put(('thumb',gen,index,version,None,str(e),"No se pudo cargar"))
 
     def refresh_item(self,index):
         if self.closed or index not in self.buttons:
@@ -187,12 +189,18 @@ class PhotoMatrix:
             except queue.Empty:
                 break
             if event[0]=='thumb':
-                _,gen,index,version,im,error = event
+                _,gen,index,version,im,error,warning = event
                 if gen!=self.generation or index not in self.buttons or version!=self.thumb_versions.get(index):
                     if im is not None:
                         im.close()
                     continue
-                button,_ = self.buttons[index]
+                button,caption = self.buttons[index]
+                if warning:
+                    self.crop_warnings[self.paths[index]] = warning
+                else:
+                    self.crop_warnings.pop(self.paths[index], None)
+                caption.configure(text=self._page_caption(index),
+                                  foreground="#B54708" if warning else "#344054")
                 if im is None:
                     button.configure(text='Error de imagen')
                 else:
@@ -227,7 +235,10 @@ class PhotoMatrix:
         def worker():
             try:
                 img,size=self.photo_loader(self.paths[index],1600)
-                detected=detectar_hoja(np.asarray(img))
+                from digitalizador import automatic_page_corners
+                full, _problem = automatic_page_corners(self.paths[index])
+                detected = (full * np.float32([img.width / size[0], img.height / size[1]])
+                            if full is not None else None)
                 self.events.put(('editor',token,index,img,size,detected,None))
             except Exception as exc:
                 self.events.put(('editor',token,index,None,None,None,str(exc)))
