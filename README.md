@@ -10,6 +10,16 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 4. Revisa las miniaturas de un vistazo. Selecciona una hoja para verla rápidamente y haz zoom únicamente si necesitas comprobar el detalle de calidad final.
 5. Pulsa **Crear PDF** o **Exportar PDF** desde la matriz. El nombre que escribas en cualquiera de las dos pantallas será el nombre exacto del PDF. Windows solo te pedirá la **carpeta** de destino. **No hay aprobación individual de páginas.**
 
+### Aprendizaje de recortes (solo cuando tú lo autorizas)
+
+1. Ajusta las fotografías problemáticas desde **Editar esquinas** o la matriz y pulsa **Guardar recorte** en cada una.
+2. Antes de exportar el PDF, pulsa **Aprender de mis ajustes** en la pantalla principal. Verás el avance de los recortes guardados.
+3. La aplicación conserva únicamente ejemplos numéricos de las diferencias entre los recortes automáticos y los que corregiste, con información aproximada de color y geometría. **No guarda ni sube las fotos**.
+4. El aprendizaje queda en **`%APPDATA%\\DigitalizadorFotos\\aprendizaje_esquinas.json`**. En nuevas sesiones y carpetas, el detector prueba una corrección limitada si el fondo, el papel y la posición de la hoja se parecen a los ejemplos.
+5. Nunca se entrena por arrastrar puntos, guardar un recorte o exportar un PDF. **Solo se actualiza al pulsar el botón**. El detector clásico es la alternativa cuando no hay suficiente semejanza, una corrección incumple la geometría segura o no se guardaron ejemplos válidos.
+
+Este aprendizaje es una **calibración por ejemplos locales**, no un modelo de inteligencia artificial que comprenda todas las formas de papel. Los casos con correcciones muy grandes, bordes cruzados o geometría insegura se descartan para proteger el PDF. Los recortes manuales guardados mantienen prioridad.
+
 ### Rendimiento
 
 - El lote de fotografías se importa y ordena por EXIF sin congelar la ventana.
@@ -96,4 +106,4 @@ Uso opcional por consola:
 - `vistas.py`: utilidades de visualización.
 - `tests/`: pruebas automatizadas.
 
-**Versión actual: 1.18.2.**
+**Versión actual: 1.19.**
