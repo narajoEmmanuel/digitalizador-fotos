@@ -40,6 +40,7 @@ class ReviewWorkspace(PhotoMatrix):
     def __init__(self, parent, paths, preview_provider, on_save, photo_loader,
                  manual_corners, on_replace, on_insert, on_export, auto_crop=True):
         self.mode = "preview"
+        self.corners_enabled = False  # Preferencia para todas las hojas del revisor.
         self.dirty = False
         self.big_image = None
         self.big_photo = None
@@ -62,8 +63,8 @@ class ReviewWorkspace(PhotoMatrix):
         self.board.bind("<Button-5>", lambda _event: self._scroll(1))
         # Controles debajo de las miniaturas, nunca sobre la vista ampliada.
         tools = self.action_bar
-        self.edit_button = ttk.Button(tools, text="Editar recorte", command=self.edit_mode)
-        self.preview_button = ttk.Button(tools, text="Ver resultado", command=self.preview_mode)
+        self.edit_button = ttk.Button(tools, text="Activar esquinas", command=self.toggle_corners)
+        self.edit_button.pack(side="left")
         self.save_button.configure(text="Guardar recorte")
         self.reset_button.configure(text="Detectar", command=self.reset)
         self.board.bind("<Double-Button-1>", self._double_click)
@@ -88,19 +89,28 @@ class ReviewWorkspace(PhotoMatrix):
         self.window.after(100, self.poll_large)
 
     def _set_mode_controls(self):
-        """Las herramientas de esquinas solo se muestran durante la edición."""
+        """El interruptor permanece visible y afecta a todas las páginas."""
         if self.mode == "preview":
-            self.edit_button.pack(side="left")
-            self.preview_button.pack_forget()
+            self.edit_button.configure(text="Activar esquinas")
             self.save_button.pack_forget()
             self.reset_button.pack_forget()
             self.board.configure(cursor="fleur")
         else:
-            self.edit_button.pack_forget()
-            self.preview_button.pack(side="left", padx=5)
+            self.edit_button.configure(text="Desactivar esquinas")
             self.reset_button.pack(side="right")
             self.save_button.pack(side="right", padx=5)
             self.board.configure(cursor="crosshair")
+
+    def toggle_corners(self):
+        """Activa o desactiva el ajuste manual persistente entre páginas."""
+        if self.corners_enabled:
+            if not self._pending():
+                return
+            self.corners_enabled = False
+            self.preview_mode()
+        else:
+            self.corners_enabled = True
+            self.edit_mode()
 
     def _double_click(self, _event):
         if self.mode == "preview":
@@ -173,18 +183,20 @@ class ReviewWorkspace(PhotoMatrix):
         self.saved_indices.add(self.selected)
         self.refresh_item(self.selected)
         self._highlight_selection()
-        self.preview_mode()
+        # En modo global de esquinas se permanece editando para pasar a otra hoja.
+        if self.corners_enabled:
+            self.mode = "edit"
+            self._set_mode_controls()
+        else:
+            self.preview_mode()
         self.status.set("Recorte guardado.")
         return True
 
     def choose(self, index):
-        if self.selected is not None and self.selected != index and self.dirty:
-            from tkinter import messagebox
-            answer = messagebox.askyesnocancel("Recorte pendiente",
-                     "¿Guardar las esquinas antes de cambiar de página?", parent=self.window)
-            if answer is None or (answer and not self.save()):
-                return
-        self.mode = "preview"
+        if self.selected is not None and self.selected != index and not self._pending():
+            return
+        # Nunca desactivar la herramienta al seleccionar otra miniatura.
+        self.mode = "edit" if getattr(self, "corners_enabled", False) else "preview"
         self._set_mode_controls()
         self.dirty = False
         self.big_token += 1
@@ -200,8 +212,6 @@ class ReviewWorkspace(PhotoMatrix):
             super()._draw_editor()
 
     def edit_mode(self):
-        if self.selected is None or self.editor_image is None:
-            return
         self.mode = "edit"
         self._set_mode_controls()
         self.status.set("")
@@ -209,9 +219,13 @@ class ReviewWorkspace(PhotoMatrix):
         if self.big_image is not None:
             self.big_image.close()
             self.big_image = None
-        super()._draw_editor()
+        if self.selected is not None and self.editor_image is not None:
+            super()._draw_editor()
 
     def preview_mode(self):
+        # También debe poder apagarse mientras se carga otra hoja.
+        self.mode = "preview"
+        self._set_mode_controls()
         if self.selected is None or self.editor_image is None:
             return
         from tkinter import messagebox
@@ -355,7 +369,23 @@ class ReviewWorkspace(PhotoMatrix):
             return True
         from tkinter import messagebox
         answer = messagebox.askyesnocancel("Recorte pendiente", "¿Guardar el recorte antes de continuar?", parent=self.window)
-        return False if answer is None else (self.save() if answer else True)
+        if answer is None:
+            return False
+        if answer:
+            return self.save()
+        # Descartar sin mostrar después esquinas que no se guardaron.
+        photo = self.paths[self.selected]
+        saved = self.manual_corners.get(photo)
+        if saved is not None:
+            self.points = saved.copy()
+        elif self.detected_points is not None:
+            self.points = self.detected_points.copy()
+        elif self.full_size is not None:
+            w, h = self.full_size
+            self.points = np.float32([[w*.05, h*.05], [w*.95, h*.05],
+                                      [w*.95, h*.95], [w*.05, h*.95]])
+        self.dirty = False
+        return True
 
     def replace(self):
         if self.selected is None or not self._pending():
