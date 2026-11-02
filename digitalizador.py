@@ -1187,7 +1187,6 @@ def gui_main():
                 self.crop_popup.lift()
                 return
             # Continuar con el editor principal sin abrir la matriz.
-                return
             selected = self.listbox.curselection()
             if not selected:
                 return
