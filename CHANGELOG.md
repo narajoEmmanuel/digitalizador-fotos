@@ -1,5 +1,16 @@
 # Historial de cambios
 
+## 1.18 (2026-11-02)
+
+- Nuevo botón **Optimizar todas** en pantalla principal, independiente del interruptor **Recorte automático**.
+- Recorre el lote completo en segundo plano, refinando desde las esquinas automáticas previamente calculadas (no vuelve a partir del detector inicial).
+- Barra de progreso, contador X/Y y porcentaje; resumen de páginas mejoradas, conservadas manualmente y sin detección segura.
+- Los recortes manuales siempre prevalecen y las modificaciones pendientes del editor no se descartan.
+- Al finalizar, se actualizan la matriz, la vista previa y las esquinas usadas por el exportador PDF.
+- El botón **Optimizar** de la matriz continúa funcionando exclusivamente sobre la página seleccionada.
+- Pruebas de caché compartida con PDF, parada sin mejora, reinicio y actualización visual sin borrar trabajos manuales.
+
+
 ## 1.17.1 (2026-11-02)
 
 - La casilla de recorte automático antes solo refrescaba la imagen principal y no afectaba a la matriz ya abierta.
