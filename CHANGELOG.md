@@ -1,5 +1,12 @@
 # Historial de cambios
 
+## 1.15.1 (2026-11-01)
+
+- Se restaura exclusivamente el detector de esquinas de la v1.14, tras observar peores resultados con el método de color beige introducido en v1.15.
+- Se conservan la optimización de la segunda pulsación, la precarga de fotografías, la matriz, el zoom, los giros y la exportación.
+- Se retiran las pruebas específicas del método de detección descartado; permanecen las pruebas anteriores de bordes, geometría, perspectivas y consistencia con el PDF.
+
+
 ## 1.15 (2026-11-01)
 
 - Incorporada la muestra real de papel beige, mediana RGB (209, 201, 183), como referencia cromática en LAB.

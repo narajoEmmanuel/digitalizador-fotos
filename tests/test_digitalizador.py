@@ -121,64 +121,6 @@ class DigitalizadorTests(unittest.TestCase):
                 create_pdf([p], output, auto_crop=False)
             self.assertFalse(output.exists())
 
-    def test_papel_beige_muestra_contra_fondos_coloreados(self):
-        import cv2
-        from recorte import PAPER_RGB, detectar_hoja, _rectangulo_proyectado
-        self.assertEqual(PAPER_RGB, (209, 201, 183))
-        h, w = 920, 700
-        y, x = np.indices((h, w))
-        expected = np.float32([[104, 110], [568, 93], [598, 790], [78, 820]])
-        frame = np.float32([[0, 0], [479, 0], [479, 639], [0, 639]])
-        transform = cv2.getPerspectiveTransform(frame, expected)
-        for background, paper_color in (
-            ((33, 91, 137), PAPER_RGB),
-            ((65, 88, 100), (243, 239, 229)),
-            ((90, 110, 70), (226, 217, 199)),
-            ((180, 180, 180), PAPER_RGB),
-        ):
-            photo = np.empty((h, w, 3), np.uint8)
-            for channel, base in enumerate(background):
-                variation = 15*np.sin((x+y)/47+channel) + 15*np.cos((x-y)/38+channel)
-                photo[..., channel] = np.uint8(np.clip(base+variation, 0, 255))
-            sheet = np.full((640, 480, 3), paper_color, np.uint8)
-            for line in range(40, 610, 28):
-                cv2.line(sheet, (0, line), (479, line), (181, 170, 164), 1)
-            for line in range(25, 620, 44):
-                cv2.circle(sheet, (467, line), 8, (85, 85, 83), -1)
-            image = cv2.warpPerspective(sheet, transform, (w, h))
-            mask = cv2.warpPerspective(
-                np.full((640, 480), 255, np.uint8), transform, (w, h))
-            photo[mask > 80] = image[mask > 80]
-            found = detectar_hoja(photo)
-            self.assertIsNotNone(found, f"Fondo: {background}, papel: {paper_color}")
-            np.testing.assert_allclose(found, expected, atol=18)
-            self.assertTrue(_rectangulo_proyectado(found, w, h))
-
-    def test_detectar_descarta_picos_y_poligonos_no_rectangulares(self):
-        from recorte import _rectangulo_proyectado, detectar_hoja
-        pointy = np.float32([[80, 80], [510, 60], [520, 580], [400, 310]])
-        self.assertFalse(_rectangulo_proyectado(pointy, 600, 700))
-        frame_only = np.full((700, 600, 3), (209, 201, 183), np.uint8)
-        import cv2
-        cv2.rectangle(frame_only, (1, 1), (598, 698), (25, 25, 25), 3)
-        self.assertIsNone(detectar_hoja(frame_only))
-
-    def test_lote_coincide_entre_resoluciones_para_papel_beige(self):
-        import cv2
-        import digitalizador
-        with tempfile.TemporaryDirectory() as folder:
-            image = np.full((1100, 830, 3), (42, 85, 118), np.uint8)
-            image[115:1005, 130:710] = [209, 201, 183]
-            path = Path(folder) / "hoja.jpg"
-            Image.fromarray(image).save(path, quality=98)
-            digitalizador._cached_auto_corners.cache_clear()
-            quad, warning = digitalizador.automatic_page_corners(path)
-            self.assertIsNone(warning)
-            self.assertIsNotNone(quad)
-            self.assertLess(np.max(np.abs(quad - np.float32([
-                [130, 115], [709, 115], [709, 1004], [130, 1004]]))), 18)
-            digitalizador._cached_auto_corners.cache_clear()
-
     def test_deteccion_hoja_con_fondo_contrastado(self):
         photo = np.full((800, 600, 3), (56, 70, 90), dtype=np.uint8)
         photo[100:700, 85:515] = (237, 232, 212)

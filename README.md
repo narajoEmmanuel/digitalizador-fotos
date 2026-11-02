@@ -23,7 +23,6 @@ Aplicación local para Windows que convierte fotografías a un PDF a color, con 
 - **Izquierda (36 %):** matriz de 16 páginas, navegación y **todos los botones** (recortar, detectar, sustituir, insertar, exportar y cerrar). Los controles tienen espacio reservado debajo de las miniaturas, sin desaparecer por el tamaño de la pantalla. El nombre y **Exportar PDF** ocupan filas independientes.
 - **Derecha (64 %):** solo la imagen procesada, sin barras ni controles que reduzcan el área de visualización. Al editar el recorte aparecen los cuatro puntos sobre la imagen.
 - **⚠ Página N:** el detector encontró esquinas inestables o una perspectiva dudosa. La aplicación conserva la fotografía completa en lugar de deformar el documento. Si hace falta, abre esa página y corrige las cuatro esquinas.
-- **Papel beige de referencia:** el detector usa el tono cálido de la muestra enviada (`#D1C9B7`, mediana RGB `209, 201, 183`), tolerando diferencias de iluminación y comparándolo con el fondo de la propia foto. Prioriza cuadriláteros convexos de cuatro lados rectos, sin picos. Si el color no permite separarlos con seguridad, utiliza un método general conservador.
 - **Misma geometría:** las miniaturas, la vista ampliada y la exportación aplican las mismas esquinas, calculadas una sola vez a una escala fija. La vista ampliada usa la imagen final a alta resolución.
 - **Rueda del mouse:** zoom alrededor del puntero. **Arrastrar:** mover la imagen ampliada. **Doble clic:** encajar la página.
 - La vista de calidad presenta las dimensiones finales en píxeles y el zoom. A **100 %**, un píxel de imagen corresponde a un píxel de pantalla.
@@ -85,4 +84,4 @@ Uso opcional por consola:
 - `vistas.py`: utilidades de visualización.
 - `tests/`: pruebas automatizadas.
 
-**Versión actual: 1.15.**
+**Versión actual: 1.15.1 (detector restaurado de v1.14).**
