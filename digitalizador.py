@@ -1312,7 +1312,18 @@ def gui_main():
                 try:
                     # La lectura y el redimensionado de HEIC ocurren fuera de Tk.
                     preview, size = preview_image(photo, limit)
-                    detection = find_document_corners(np.asarray(preview))
+                    if read_examples():
+                        # Tras autorizar aprendizaje, este editor debe mostrar
+                        # las mismas esquinas aprendidas que matriz y PDF.
+                        learned_full, _issue = automatic_page_corners(photo)
+                        detection = (learned_full * np.float32([
+                            preview.width / size[0], preview.height / size[1]])
+                            if learned_full is not None else
+                            find_document_corners(np.asarray(preview)))
+                    else:
+                        # Sin aprendizaje, conservar el detector principal
+                        # original que ya funciona bien para el usuario.
+                        detection = find_document_corners(np.asarray(preview))
                     self.events.put(('crop_ready', token, photo, preview, size, detection, None))
                 except Exception as exc:
                     self.events.put(('crop_ready', token, photo, None, None, None, str(exc)))
