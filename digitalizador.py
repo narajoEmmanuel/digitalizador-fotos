@@ -615,6 +615,8 @@ def gui_main():
             self.pdf_name = tk.StringVar(value="")
             self.previous_folder_name: str | None = None
             self.auto_crop = tk.BooleanVar(value=True)
+            self.auto_crop_enabled = True
+            self.crop_status = tk.StringVar(value="Activo")
             self.info = tk.StringVar(value="Selecciona una carpeta con las fotos de tus documentos.")
             self.progress_text = tk.StringVar(value="")
             self.events: queue.Queue = queue.Queue()
@@ -673,8 +675,12 @@ def gui_main():
             ttk.Label(body, textvariable=self.info, wraplength=920).pack(anchor="w", pady=(6, 9))
             crop_row = ttk.Frame(body)
             crop_row.pack(fill="x", pady=(0, 4))
-            ttk.Checkbutton(crop_row, text="Recorte automático", variable=self.auto_crop,
-                            command=self.refresh_preview).pack(side="left")
+            self.crop_check = ttk.Checkbutton(
+                crop_row, text="Recorte automático", variable=self.auto_crop,
+                command=self.on_auto_crop_change)
+            self.crop_check.pack(side="left")
+            ttk.Label(crop_row, textvariable=self.crop_status,
+                      foreground="#667085").pack(side="left", padx=(12, 0))
             self.manual_button = ttk.Button(crop_row, text="Editar esquinas", style="Small.TButton", command=self.adjust_corners)
             self.manual_button.pack(side="right")
             self.manual_button.state(["disabled"])
@@ -778,14 +784,49 @@ def gui_main():
             self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
             self.matrix_btn.state(["!disabled"] if self.paths else ["disabled"])
             if self.paths:
-                # Un único barrido inicial, también para páginas fuera de la matriz visible.
-                self._preload_detections(list(self.paths), self.detection_generation)
+                if self.auto_crop_enabled:
+                    self.crop_status.set(f"Optimizando: 0/{len(self.paths)}")
+                    self._preload_detections(list(self.paths), self.detection_generation)
+                else:
+                    self.crop_status.set("Desactivado")
+                    self.progress_text.set("Sin recorte automático.")
                 self.listbox.selection_set(0)
                 self.refresh_preview()
             else:
                 self.set_preview(self.preview_orig, None, "Original")
                 self.set_preview(self.preview_result, None, "Procesado")
                 messagebox.showinfo("No hay fotografías", "Esta carpeta no contiene fotos JPG, PNG o HEIC compatibles.")
+
+        def on_auto_crop_change(self):
+            """Activar/desactivar el recorte para toda la sesión y su matriz."""
+            enabled = bool(self.auto_crop.get())
+            self.auto_crop_enabled = enabled
+            self.preview_cache.clear()
+            self.preview_pending.clear()
+            self.preview_token += 1
+            if self.paths:
+                self.detection_generation += 1
+                self.detection_done = 0
+                self.detection_warnings = 0
+                if enabled:
+                    # Nueva detección solicitada explícitamente por el usuario.
+                    _cached_auto_corners.cache_clear()
+                    self.detection_total = len(self.paths)
+                    self.crop_status.set(f"Optimizando: 0/{len(self.paths)}")
+                    self._preload_detections(list(self.paths), self.detection_generation)
+                else:
+                    self.detection_total = 0
+                    self.crop_status.set("Desactivado")
+                    if not self.busy:
+                        self.progress_text.set("Recorte automático desactivado.")
+                review = self.active_review
+                if review is not None and not review.closed:
+                    review.set_auto_crop(enabled)
+                    review.set_detection_progress(
+                        0, len(self.paths) if enabled else 0)
+            else:
+                self.crop_status.set("Activo" if enabled else "Desactivado")
+            self.refresh_preview()
 
         def _preload_detections(self, photos: list[Path], generation: int):
             """Precalcular las esquinas de todo el lote sin bloquear la interfaz."""
@@ -880,14 +921,16 @@ def gui_main():
 
             from revisor import ReviewWorkspace
             manual = self.manual_corners
-            auto = self.auto_crop.get()
+            auto = self.auto_crop_enabled
 
             def processed(path):
+                # El trabajador usa un booleano normal, nunca una variable de Tk.
+                active = self.auto_crop_enabled
                 original, result, _ = preview_pair(
-                    path, auto, manual.get(path), rotation=self.rotations.get(path, 0))
+                    path, active, manual.get(path), rotation=self.rotations.get(path, 0))
                 original.close()
                 reason = None
-                if auto and path not in manual:
+                if active and path not in manual:
                     _, reason = automatic_page_corners(path)
                 return result, reason
 
@@ -1080,6 +1123,7 @@ def gui_main():
             self.manual_button.state(["disabled"])
             self.matrix_btn.state(["disabled"])
             self.name_entry.state(["disabled"])
+            self.crop_check.state(["disabled"])
             self.progress.configure(mode="determinate", maximum=100, value=0)
             self.progress_text.set(f"Preparando {len(self.paths)} páginas...")
             paths = list(self.paths)
@@ -1136,9 +1180,13 @@ def gui_main():
                                 self._prefetch_photo_neighbors(current[0])
                 elif event[0] == "batch_detection":
                     _, generation, done, total, warnings = event
-                    if generation == self.detection_generation:
+                    if generation == self.detection_generation and self.auto_crop_enabled:
                         self.detection_done, self.detection_total = done, total
                         self.detection_warnings = warnings
+                        self.crop_status.set(
+                            f"Optimizando: {done}/{total}" if done < total
+                            else f"Listo: {total}/{total}"
+                                 + (f" · {warnings} revisar" if warnings else ""))
                         if not self.busy:
                             self.progress_text.set(
                                 f"Recortes preparados: {done}/{total}"
@@ -1219,6 +1267,7 @@ def gui_main():
             self.manual_button.state(["!disabled"] if self.paths else ["disabled"])
             self.matrix_btn.state(["!disabled"] if self.paths else ["disabled"])
             self.name_entry.state(["!disabled"])
+            self.crop_check.state(["!disabled"])
 
     root = tk.Tk()
     DigitalizadorApp(root)
