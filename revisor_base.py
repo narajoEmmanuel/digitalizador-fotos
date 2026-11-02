@@ -1,5 +1,7 @@
 """Componentes gráficos compartidos del revisor previo a exportar el PDF."""
 from concurrent.futures import ThreadPoolExecutor
+from collections import OrderedDict
+from threading import Lock
 import queue
 import numpy as np
 import cv2
@@ -51,12 +53,16 @@ class PhotoMatrix:
                 pass
         self.window.protocol('WM_DELETE_WINDOW', self.close)
         self.pool = ThreadPoolExecutor(max_workers=3)
+        self.quick_pool = ThreadPoolExecutor(max_workers=2)
+        self.quick_lock = Lock()
+        self.quick_cache = OrderedDict()
         self.events = queue.Queue()
         self.generation = self.selection_token = 0
         self.start = 0
         self.photos, self.buttons, self.thumb_versions = {}, {}, {}
         self.crop_warnings = {}
         self.selected = None
+        self.editor_loaded_index = None
         self.saved_indices = set()
         self.closed = False
         self.editor_image = self.editor_photo = None
@@ -160,10 +166,38 @@ class PhotoMatrix:
     def _page_caption(self,index):
         return f'Página {index+1}' + (' ✓' if index in self.saved_indices else '')
 
+    def get_quick_preview(self, path):
+        """Imagen procesada ligera compartida por miniaturas y vista de lectura."""
+        with self.quick_lock:
+            item = self.quick_cache.get(path)
+            if item is not None:
+                self.quick_cache.move_to_end(path)
+                im, warning = item
+                return im.copy(), warning
+        result = self.preview_provider(path)
+        im, warning = result if isinstance(result, tuple) else (result, None)
+        with self.quick_lock:
+            if self.closed:
+                im.close()
+                raise RuntimeError("Se cerró el revisor.")
+            old = self.quick_cache.pop(path, None)
+            if old is not None:
+                old[0].close()
+            self.quick_cache[path] = (im, warning)
+            while len(self.quick_cache) > 24:
+                _, expired = self.quick_cache.popitem(last=False)
+                expired[0].close()
+            return im.copy(), warning
+
+    def discard_quick_preview(self, path):
+        with self.quick_lock:
+            old = self.quick_cache.pop(path, None)
+            if old:
+                old[0].close()
+
     def _thumb(self, gen, index, path, version):
         try:
-            result = self.preview_provider(path)
-            im, warning = result if isinstance(result, tuple) else (result, None)
+            im, warning = self.get_quick_preview(path)
             im.thumbnail(self.thumb_size, Image.Resampling.BILINEAR)
             self.events.put(('thumb',gen,index,version,im,None,warning))
         except Exception as e:
@@ -172,6 +206,7 @@ class PhotoMatrix:
     def refresh_item(self,index):
         if self.closed or index not in self.buttons:
             return
+        self.discard_quick_preview(self.paths[index])
         self.thumb_versions[index] = self.thumb_versions.get(index,0)+1
         self.pool.submit(self._thumb,self.generation,index,self.paths[index],self.thumb_versions[index])
 
@@ -248,6 +283,7 @@ class PhotoMatrix:
         if self.editor_image is not None:
             self.editor_image.close()
         self.editor_image=preview
+        self.editor_loaded_index = self.selected
         self.full_size=size
         w,h=size
         scale=np.float32([w/preview.width,h/preview.height])
@@ -340,6 +376,11 @@ class PhotoMatrix:
         if self.resize_after is not None:
             self.window.after_cancel(self.resize_after)
         self.pool.shutdown(wait=False,cancel_futures=True)
+        self.quick_pool.shutdown(wait=False,cancel_futures=True)
+        with self.quick_lock:
+            for image, _warning in self.quick_cache.values():
+                image.close()
+            self.quick_cache.clear()
         if self.editor_image is not None:
             self.editor_image.close()
         self.window.destroy()
