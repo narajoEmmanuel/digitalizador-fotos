@@ -732,6 +732,29 @@ class DigitalizadorTests(unittest.TestCase):
             self.assertFalse(list(folder.glob("pagina_*.jpg")))
             self.assertFalse(list(folder.glob(".digitalizador_*.pdf")))
 
+    def test_indicador_pdf_siempre_visible_en_parte_superior(self):
+        import inspect
+        import digitalizador
+        source = inspect.getsource(digitalizador.gui_main)
+        # La barra se reserva antes de que la vista panorámica ocupe espacio.
+        progress_ui = source.index('footer = ttk.Frame(body)')
+        preview_panes = source.index('panes = ttk.Panedwindow(body, orient="horizontal")')
+        self.assertLess(progress_ui, preview_panes)
+        self.assertIn('self._open_export_progress(dialog_parent, target.name, len(self.paths))', source)
+        self.assertIn('self._update_export_popup("pages", n, total, elapsed)', source)
+        self.assertIn('self._update_export_popup(stage)', source)
+        self.assertIn('self._close_export_progress()', source)
+
+    def test_progreso_pdf_no_da_por_terminada_verificacion(self):
+        import inspect
+        import digitalizador
+        source = inspect.getsource(digitalizador.gui_main)
+        self.assertIn('popup.title("Creando PDF")', source)
+        self.assertIn('popup.attributes("-topmost", True)', source)
+        self.assertIn('"Verificando PDF..." if phase == "verifying"', source)
+        self.assertIn('"Guardando PDF..."', source)
+        self.assertIn('self.export_popup_percent.set("100 % páginas")', source)
+
     def test_progreso_da_estimacion_sin_inventar_tiempo_de_guardado(self):
         from digitalizador import export_progress_details, format_export_duration
         self.assertEqual(format_export_duration(92), "1 min 32 s")
